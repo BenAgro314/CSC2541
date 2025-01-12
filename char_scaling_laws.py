@@ -14,6 +14,7 @@ from datasets import load_dataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from torch.optim.lr_scheduler import CosineAnnealingLR
+import json
 
 ###############################################################################
 # 1. Character-Level Dataset and Vocab
@@ -110,7 +111,7 @@ class SmallTransformer(nn.Module):
 
         self.embed_tokens = nn.Embedding(vocab_size, d_model)
         self.pos_encoder = PositionalEncoding(d_model, max_len=max_seq_len)
-        self.max_seq_len=max_seq_len
+        self.max_seq_len = max_seq_len
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -336,6 +337,15 @@ def main():
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     # ---------------------------
+    # 2.1 Log Arguments to JSON
+    # ---------------------------
+    args_dict = vars(args)
+    args_json_path = os.path.join(args.output_dir, args.experiment_name, 'args.json')
+    with open(args_json_path, 'w') as f:
+        json.dump(args_dict, f, indent=4)
+    print(f"Saved arguments to {args_json_path}")
+
+    # ---------------------------
     # 3. Initialize TensorBoard
     # ---------------------------
     writer = SummaryWriter(log_dir=log_dir)
@@ -434,7 +444,19 @@ def main():
     # ---------------------------
     for epoch in range(args.epochs):
         start_time = time.time()
-        train_loss = train_one_epoch(model, train_loader, optimizer, criterion, DEVICE, writer, epoch, scheduler, num_iters_generate=args.num_iters_generate, checkpoint_iters=args.checkpoint_iters, checkpoint_dir=checkpoint_dir)
+        train_loss = train_one_epoch(
+            model,
+            train_loader,
+            optimizer,
+            criterion,
+            DEVICE,
+            writer,
+            epoch,
+            scheduler,
+            num_iters_generate=args.num_iters_generate,
+            checkpoint_iters=args.checkpoint_iters,
+            checkpoint_dir=checkpoint_dir
+        )
         val_loss = evaluate(model, val_loader, criterion, DEVICE, writer, epoch)
 
         end_time = time.time()
@@ -442,8 +464,11 @@ def main():
         eta = epoch_duration * (args.epochs - epoch - 1)
 
         writer.add_scalar("Time/Epoch", epoch_duration, epoch)
-        print(f"Epoch {epoch+1}/{args.epochs} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} "
-              f"| Epoch Time: {epoch_duration:.2f}s | ETA: {eta/60:.2f}m")
+        print(
+            f"Epoch {epoch+1}/{args.epochs} | "
+            f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} "
+            f"| Epoch Time: {epoch_duration:.2f}s | ETA: {eta/60:.2f}m"
+        )
 
     # ---------------------------
     # 10. Close Writer
