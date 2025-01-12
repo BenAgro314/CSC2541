@@ -320,9 +320,9 @@ def main():
                         help='Num attention heads')
     parser.add_argument('--n_layers', type=int, default=2,
                         help='Num transformer layers')
-    parser.add_argument('--num_iters_generate', type=int, default=None,
+    parser.add_argument('--num_iters_generate', type=int, default=10000,
                         help='Number of iters to print a generation for sanity check')
-    parser.add_argument('--checkpoint_iters', type=int, default=None,
+    parser.add_argument('--checkpoint_iters', type=int, default=10000,
                         help='Number of iters to save a model checkpoint')
 
     args = parser.parse_args()
