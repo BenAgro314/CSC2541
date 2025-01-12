@@ -237,7 +237,6 @@ def train_one_epoch(
     window_size=10  # Added a window_size for clarity
 ):
     model.train()
-    total_loss = 0.0
     
     # We'll keep track of recent batch losses in this list:
     recent_losses = []
@@ -323,6 +322,13 @@ def train_one_epoch(
             print("Generated Text:")
             print(repr(generated_continuation_str))
             print("------------------------------\n")
+
+            text_out = "\nSample Prompt:\n" + repr(prompt_str) + "\nGenerated Text:\n" + repr(generated_continuation_str)
+            writer.add_text(
+                "Generated Text",
+                text_out,
+                global_step=epoch * len(dataloader) + batch_idx
+            )
 
         # Save checkpoints periodically
         if checkpoint_iters is not None and batch_idx % checkpoint_iters == 0:
