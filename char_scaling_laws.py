@@ -2,6 +2,7 @@ import math
 import time
 import os
 import argparse
+import csv  # New import for CSV operations
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -14,7 +15,7 @@ from datasets import load_dataset
 # Additional imports for enhancements
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import LambdaLR  # Updated import
 import json
 
 ###############################################################################
@@ -40,8 +41,8 @@ class CharacterDataset(Dataset):
         x_str = self.text[idx : idx + self.seq_len]
         y_str = self.text[idx + 1 : idx + self.seq_len + 1]
         # Convert chars to IDs
-        x_ids = [self.char2idx[ch] for ch in x_str]
-        y_ids = [self.char2idx[ch] for ch in y_str]
+        x_ids = [self.char2idx.get(ch, self.char2idx[' ']) for ch in x_str]  # Handle unknown chars
+        y_ids = [self.char2idx.get(ch, self.char2idx[' ']) for ch in y_str]
         return torch.tensor(x_ids, dtype=torch.long), torch.tensor(y_ids, dtype=torch.long)
 
 def collate_fn(batch):
@@ -59,6 +60,8 @@ def build_char_vocab(texts):
     """
     # Collect all characters
     unique_chars = set("".join(texts))
+    # Ensure a padding character exists
+    unique_chars.add(' ')  # Adding space as padding if not present
     # Sort for reproducibility
     unique_chars = sorted(list(unique_chars))
     char2idx = {ch: i for i, ch in enumerate(unique_chars)}
@@ -109,10 +112,10 @@ class SmallTransformer(nn.Module):
         super().__init__()
         self.d_model = d_model
         self.idx2char = idx2char  # For decoding during generation (optional)
+        self.max_seq_len = max_seq_len  # Updated to store max_seq_len
 
         self.embed_tokens = nn.Embedding(vocab_size, d_model)
         self.pos_encoder = PositionalEncoding(d_model, max_len=max_seq_len)
-        self.max_seq_len = max_seq_len
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -222,8 +225,6 @@ def gaussian_kernel(size=10, sigma=2.0):
     kernel /= kernel.sum()
     return kernel
 
-import time  # Ensure that the time module is imported
-
 def train_one_epoch(
     model,
     dataloader,
@@ -232,10 +233,10 @@ def train_one_epoch(
     device,
     writer,
     epoch,
-    scheduler=None,
+    scheduler=None, 
     num_iters_generate=None,
     checkpoint_iters=None,
-    checkpoint_dir=None,
+    checkpoint_dir=None, 
     window_size=10  # Added a window_size for clarity
 ):
     model.train()
@@ -262,20 +263,25 @@ def train_one_epoch(
         logits = model(x)  # shape: [batch_size, seq_len, vocab_size]
         loss = criterion(logits.view(-1, logits.size(-1)), y.view(-1))
         loss.backward()
+        
+        # ----------------------------
+        # 1. Gradient Clipping
+        # ----------------------------
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
         optimizer.step()
 
         # Step the scheduler if provided
         if scheduler:
             scheduler.step()
-            writer.add_scalar("Learning Rate/Step", scheduler.get_last_lr()[0], 
-                              epoch * len(dataloader) + batch_idx)
+            current_lr = scheduler.get_last_lr()[0]
+            writer.add_scalar("Learning Rate/Step", current_lr, epoch * len(dataloader) + batch_idx)
 
         # Log the raw loss each iteration
-        writer.add_scalar("Loss/Train_iter", loss.item(), 
-                          epoch * len(dataloader) + batch_idx)
+        writer.add_scalar("Loss/Train_iter", loss.item(), epoch * len(dataloader) + batch_idx)
 
         # ----------------------------
-        # 1. Maintain a rolling buffer
+        # 2. Maintain a rolling buffer
         # ----------------------------
         recent_losses.append(loss.item())
         if len(recent_losses) > window_size:
@@ -283,7 +289,7 @@ def train_one_epoch(
             recent_losses.pop(0)
 
         # ----------------------------
-        # 2. Compute Gaussian-smoothed loss
+        # 3. Compute Gaussian-smoothed loss
         # ----------------------------
         current_window_length = len(recent_losses)
         # Take only the last `current_window_length` points of the kernel
@@ -296,7 +302,7 @@ def train_one_epoch(
         smoothed_loss = sum(l * k for l, k in zip(recent_losses, used_kernel))
 
         # ----------------------------
-        # 3. Calculate and Log ETA
+        # 4. Calculate and Log ETA
         # ----------------------------
         elapsed_time = time.time() - epoch_start_time  # Total elapsed time since epoch start
         avg_time_per_batch = elapsed_time / (batch_idx + 1)  # Average time per batch
@@ -312,7 +318,7 @@ def train_one_epoch(
         writer.add_scalar("Time/ETA", eta_seconds, epoch * len(dataloader) + batch_idx)
 
         # ----------------------------
-        # 4. Update TQDM progress bar
+        # 5. Update TQDM progress bar
         # ----------------------------
         progress_bar.set_postfix({
             "Loss (raw)": f"{loss.item():.4f}",
@@ -320,15 +326,15 @@ def train_one_epoch(
         })
 
         # ----------------------------
-        # 5. Log smoothed loss to TensorBoard
+        # 6. Log smoothed loss to TensorBoard
         # ----------------------------
         writer.add_scalar("Loss/Train_iter_smoothed", smoothed_loss, 
                           epoch * len(dataloader) + batch_idx)
 
         # ----------------------------
-        # 6. Generate and Log Sample Text
+        # 7. Generate and Log Sample Text
         # ----------------------------
-        if num_iters_generate is not None and batch_idx % num_iters_generate == 0:
+        if num_iters_generate is not None and (batch_idx % num_iters_generate == 0):
             # Take the first sample in the batch as a prompt
             prompt = x[:1]  # Shape: [1, seq_len]
             generated = model.generate(prompt, max_length=2*model.max_seq_len, do_sample=False)
@@ -359,16 +365,14 @@ def train_one_epoch(
             )
 
         # ----------------------------
-        # 7. Save Checkpoints Periodically
+        # 8. Save Checkpoints Periodically
         # ----------------------------
-        if checkpoint_iters is not None and batch_idx % checkpoint_iters == 0:
-            checkpoint_path = os.path.join(checkpoint_dir, f"epoch_{epoch+1}_iter_{batch_idx}.pt")
+        if checkpoint_iters is not None and checkpoint_dir and (batch_idx % checkpoint_iters == 0):
+            checkpoint_path = os.path.join(checkpoint_dir, f"epoch_{epoch+1}_iter_{batch_idx+1}.pt")
             torch.save(model.state_dict(), checkpoint_path)
             print(f"Model checkpoint saved at {checkpoint_path}")
 
-    # ----------------------------
-    # 8. Return the epoch average smoothed loss
-    # ----------------------------
+    # Return the epoch average smoothed loss
     return smoothed_loss
 
 
@@ -414,7 +418,7 @@ def main():
     parser.add_argument('--epochs', type=int, default=1,
                         help='Number of training epochs.')
     parser.add_argument('--lr', type=float, default=3e-4,
-                        help='Learning rate for the optimizer.')
+                        help='Initial learning rate for the optimizer.')
     parser.add_argument('--num_workers', type=int, default=4,
                         help='Number of worker threads for data loading.')
     parser.add_argument('--num_train_tokens', type=int, default=None,
@@ -422,15 +426,15 @@ def main():
     parser.add_argument('--d_model', type=int, default=128,
                         help='Model dimensions.')
     parser.add_argument('--n_heads', type=int, default=4,
-                        help='Num attention heads')
+                        help='Number of attention heads.')
     parser.add_argument('--n_layers', type=int, default=2,
-                        help='Num transformer layers')
-    parser.add_argument('--num_iters_generate', type=int, default=10000,
-                        help='Number of iters to print a generation for sanity check')
-    parser.add_argument('--checkpoint_iters', type=int, default=10000,
-                        help='Number of iters to save a model checkpoint')
+                        help='Number of transformer layers.')
+    parser.add_argument('--num_iters_generate', type=int, default=5000,
+                        help='Number of iters to print a generation for sanity check.')
+    parser.add_argument('--checkpoint_iters', type=int, default=5000,
+                        help='Number of iters to save a model checkpoint.')
     parser.add_argument('--run_val', type=bool, default=False,
-                        help='Whether or not to run validation after each epoch')
+                        help='Whether or not to run validation after each epoch.')
 
     args = parser.parse_args()
 
@@ -541,9 +545,28 @@ def main():
     # 8. Loss, Optimizer, Scheduler
     # ---------------------------
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=0.1) # from https://wandb.ai/vincenttu/blog_posts/reports/Meta-AI-Released-LLaMA--VmlldzozNjM5MTAz
+    
+    # Using AdamW optimizer as it's commonly used with Transformer models
+    optimizer = optim.AdamW(
+        model.parameters(),
+        lr=args.lr,
+        betas=(0.9, 0.95),
+        weight_decay=0.1
+    )  # from https://wandb.ai/vincenttu/blog_posts/reports/Meta-AI-Released-LLaMA--VmlldzozNjM5MTAz
+
     total_steps = args.epochs * len(train_loader)
-    scheduler = CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=args.lr/10)
+    
+    # Define Linear Warmup + Cosine Annealing Scheduler using LambdaLR
+    def lr_lambda(current_step):
+        warmup_steps = 1000
+        if current_step < warmup_steps:
+            return float(current_step) / float(max(1, warmup_steps))
+        else:
+            progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+            # Cosine annealing to decay to 1/10th of initial LR
+            return 0.1 + 0.45 * (1 + math.cos(math.pi * progress))
+
+    scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
 
     # ---------------------------
     # 9. Training Loop
@@ -574,6 +597,17 @@ def main():
             print(
                 f"Epoch {epoch+1}/{args.epochs} | "
                 f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} "
+                f"| Epoch Time: {epoch_duration:.2f}s | ETA: {eta/60:.2f}m"
+            )
+        else:
+            end_time = time.time()
+            epoch_duration = end_time - start_time
+            eta = epoch_duration * (args.epochs - epoch - 1)
+
+            writer.add_scalar("Time/Epoch", epoch_duration, epoch)
+            print(
+                f"Epoch {epoch+1}/{args.epochs} | "
+                f"Train Loss: {train_loss:.4f} "
                 f"| Epoch Time: {epoch_duration:.2f}s | ETA: {eta/60:.2f}m"
             )
 
