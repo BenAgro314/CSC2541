@@ -209,7 +209,7 @@ class SmallTransformer(nn.Module):
 # 4. Training & Evaluation
 ###############################################################################
 
-def train_one_epoch(model, dataloader, optimizer, criterion, device, writer, epoch, scheduler=None):
+def train_one_epoch(model, dataloader, optimizer, criterion, device, writer, epoch, scheduler=None, num_iters_generate=None, checkpoint_iters=None, checkpoint_dir=None):
     model.train()
     total_loss = 0.0
     progress_bar = tqdm(enumerate(dataloader), total=len(dataloader), desc=f"Epoch {epoch+1} [Train]")
@@ -234,7 +234,7 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, writer, epo
         progress_bar.set_postfix({"Avg Loss": f"{avg_loss:.4f}"})
 
         # Print sample generation every N steps
-        if batch_idx % 500 == 0:
+        if num_iters_generate is not None and batch_idx % num_iters_generate == 0:
             # Take the first sample in the batch as a prompt
             prompt = x[:1]  # Shape: [1, seq_len]
             generated = model.generate(prompt, max_length=2*model.max_seq_len, do_sample=False)
@@ -257,6 +257,11 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, writer, epo
             print("Generated Text:")
             print(repr(generated_continuation_str))
             print("------------------------------\n")
+
+        if checkpoint_iters is not None and batch_idx % checkpoint_iters == 0:
+            checkpoint_path = os.path.join(checkpoint_dir, f"epoch_{epoch+1}_iter_{batch_idx}.pt")
+            torch.save(model.state_dict(), checkpoint_path)
+            print(f"Model checkpoint saved at {checkpoint_path}")
 
     epoch_loss = total_loss / len(dataloader)
     writer.add_scalar("Loss/Train_Epoch", epoch_loss, epoch)
@@ -297,9 +302,9 @@ def main():
                         help='Directory to save TensorBoard logs and model checkpoints.')
     parser.add_argument('--experiment_name', type=str, default=f'experiment-{current_time}',
                         help='Name of the experiment for logging purposes.')
-    parser.add_argument('--seq_len', type=int, default=64,
+    parser.add_argument('--seq_len', type=int, default=128,
                         help='Sequence length for training.')
-    parser.add_argument('--batch_size', type=int, default=32,
+    parser.add_argument('--batch_size', type=int, default=128,
                         help='Batch size for training.')
     parser.add_argument('--epochs', type=int, default=1,
                         help='Number of training epochs.')
@@ -315,6 +320,10 @@ def main():
                         help='Num attention heads')
     parser.add_argument('--n_layers', type=int, default=2,
                         help='Num transformer layers')
+    parser.add_argument('--num_iters_generate', type=int, default=None,
+                        help='Number of iters to print a generation for sanity check')
+    parser.add_argument('--checkpoint_iters', type=int, default=None,
+                        help='Number of iters to save a model checkpoint')
 
     args = parser.parse_args()
 
@@ -418,14 +427,14 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     total_steps = args.epochs * len(train_loader)
-    scheduler = CosineAnnealingLR(optimizer, T_max=total_steps)
+    scheduler = CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=args.lr/10)
 
     # ---------------------------
     # 9. Training Loop
     # ---------------------------
     for epoch in range(args.epochs):
         start_time = time.time()
-        train_loss = train_one_epoch(model, train_loader, optimizer, criterion, DEVICE, writer, epoch, scheduler)
+        train_loss = train_one_epoch(model, train_loader, optimizer, criterion, DEVICE, writer, epoch, scheduler, num_iters_generate=args.num_iters_generate, checkpoint_iters=args.checkpoint_iters, checkpoint_dir=checkpoint_dir)
         val_loss = evaluate(model, val_loader, criterion, DEVICE, writer, epoch)
 
         end_time = time.time()
@@ -435,11 +444,6 @@ def main():
         writer.add_scalar("Time/Epoch", epoch_duration, epoch)
         print(f"Epoch {epoch+1}/{args.epochs} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} "
               f"| Epoch Time: {epoch_duration:.2f}s | ETA: {eta/60:.2f}m")
-
-        # Save checkpoint
-        checkpoint_path = os.path.join(checkpoint_dir, f"epoch_{epoch+1}.pt")
-        torch.save(model.state_dict(), checkpoint_path)
-        print(f"Model checkpoint saved at {checkpoint_path}")
 
     # ---------------------------
     # 10. Close Writer
