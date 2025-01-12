@@ -398,6 +398,8 @@ def main():
                         help='Number of iters to print a generation for sanity check')
     parser.add_argument('--checkpoint_iters', type=int, default=10000,
                         help='Number of iters to save a model checkpoint')
+    parser.add_argument('--run_val', type=bool, default=False,
+                        help='Whether or not to run validation after each epoch')
 
     args = parser.parse_args()
 
@@ -530,18 +532,19 @@ def main():
             checkpoint_iters=args.checkpoint_iters,
             checkpoint_dir=checkpoint_dir
         )
-        val_loss = evaluate(model, val_loader, criterion, DEVICE, writer, epoch)
+        if args.run_val:
+            val_loss = evaluate(model, val_loader, criterion, DEVICE, writer, epoch)
 
-        end_time = time.time()
-        epoch_duration = end_time - start_time
-        eta = epoch_duration * (args.epochs - epoch - 1)
+            end_time = time.time()
+            epoch_duration = end_time - start_time
+            eta = epoch_duration * (args.epochs - epoch - 1)
 
-        writer.add_scalar("Time/Epoch", epoch_duration, epoch)
-        print(
-            f"Epoch {epoch+1}/{args.epochs} | "
-            f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} "
-            f"| Epoch Time: {epoch_duration:.2f}s | ETA: {eta/60:.2f}m"
-        )
+            writer.add_scalar("Time/Epoch", epoch_duration, epoch)
+            print(
+                f"Epoch {epoch+1}/{args.epochs} | "
+                f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} "
+                f"| Epoch Time: {epoch_duration:.2f}s | ETA: {eta/60:.2f}m"
+            )
 
     # ---------------------------
     # 10. Close Writer
