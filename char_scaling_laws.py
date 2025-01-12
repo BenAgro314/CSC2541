@@ -237,7 +237,8 @@ def train_one_epoch(
     num_iters_generate=None,
     checkpoint_iters=None,
     checkpoint_dir=None, 
-    window_size=10  # Added a window_size for clarity
+    window_size=10,  # Added a window_size for clarity
+    num_params: int | None = None,
 ):
     model.train()
     
@@ -279,6 +280,7 @@ def train_one_epoch(
 
         # Log the raw loss each iteration
         writer.add_scalar("Loss/Train_iter", loss.item(), epoch * len(dataloader) + batch_idx)
+
 
         # ----------------------------
         # 2. Maintain a rolling buffer
@@ -330,6 +332,14 @@ def train_one_epoch(
         # ----------------------------
         writer.add_scalar("Loss/Train_iter_smoothed", smoothed_loss, 
                           epoch * len(dataloader) + batch_idx)
+
+        if num_params is not None:
+            batch_size = x.size(0)
+            seq_len = x.size(1)
+            num_iters = epoch * len(dataloader) + (batch_idx + 1)
+            num_tokens = batch_size * seq_len * num_iters
+            approx_num_flops = 6 * num_params * num_tokens
+            writer.add_scalar("Loss/Train_per_flops", loss.item(), approx_num_flops)
 
         # ----------------------------
         # 7. Generate and Log Sample Text
@@ -584,7 +594,8 @@ def main():
             scheduler,
             num_iters_generate=args.num_iters_generate,
             checkpoint_iters=args.checkpoint_iters,
-            checkpoint_dir=checkpoint_dir
+            checkpoint_dir=checkpoint_dir,
+            num_params=total_params,
         )
         if args.run_val:
             val_loss = evaluate(model, val_loader, criterion, DEVICE, writer, epoch)
