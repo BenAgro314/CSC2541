@@ -308,7 +308,7 @@ def main():
                         help='Batch size for training.')
     parser.add_argument('--epochs', type=int, default=1,
                         help='Number of training epochs.')
-    parser.add_argument('--lr', type=float, default=1e-3,
+    parser.add_argument('--lr', type=float, default=5e-4,
                         help='Learning rate for the optimizer.')
     parser.add_argument('--num_workers', type=int, default=4,
                         help='Number of worker threads for data loading.')
