@@ -5,6 +5,7 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 from torch.utils.data import Dataset, DataLoader
 
 # Hugging Face Datasets
@@ -210,9 +211,39 @@ class SmallTransformer(nn.Module):
 # 4. Training & Evaluation
 ###############################################################################
 
-def train_one_epoch(model, dataloader, optimizer, criterion, device, writer, epoch, scheduler=None, num_iters_generate=None, checkpoint_iters=None, checkpoint_dir=None):
+def gaussian_kernel(size=10, sigma=2.0):
+    """
+    Create a 1D Gaussian kernel of length `size` and standard deviation `sigma`.
+    This kernel will be normalized to sum to 1.
+    """
+    # E.g. for size=10, this creates points from -4.5 to +4.5
+    x = np.linspace(-(size-1)/2., (size-1)/2., size)
+    kernel = np.exp(-0.5 * (x / sigma)**2)
+    kernel /= kernel.sum()
+    return kernel
+
+def train_one_epoch(
+    model,
+    dataloader,
+    optimizer,
+    criterion,
+    device,
+    writer,
+    epoch,
+    scheduler=None,
+    num_iters_generate=None,
+    checkpoint_iters=None,
+    checkpoint_dir=None,
+    window_size=10  # Added a window_size for clarity
+):
     model.train()
     total_loss = 0.0
+    
+    # We'll keep track of recent batch losses in this list:
+    recent_losses = []
+    # Pre-compute a Gaussian kernel of desired size:
+    kernel = gaussian_kernel(size=window_size, sigma=2.0)
+    
     progress_bar = tqdm(enumerate(dataloader), total=len(dataloader), desc=f"Epoch {epoch+1} [Train]")
     
     for batch_idx, (x, y) in progress_bar:
@@ -224,17 +255,52 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, writer, epo
         loss.backward()
         optimizer.step()
 
+        # Step the scheduler if provided
         if scheduler:
             scheduler.step()
-            writer.add_scalar("Learning Rate/Step", scheduler.get_last_lr()[0], epoch * len(dataloader) + batch_idx)
+            writer.add_scalar("Learning Rate/Step", scheduler.get_last_lr()[0], 
+                              epoch * len(dataloader) + batch_idx)
 
-        writer.add_scalar("Loss/Train_iter", loss.item(), epoch * len(dataloader) + batch_idx)
+        # Log the raw loss each iteration
+        writer.add_scalar("Loss/Train_iter", loss.item(), 
+                          epoch * len(dataloader) + batch_idx)
 
-        total_loss += loss.item()
-        avg_loss = total_loss / (batch_idx + 1)
-        progress_bar.set_postfix({"Avg Loss": f"{avg_loss:.4f}"})
+        # ----------------------------
+        # 1. Maintain a rolling buffer
+        # ----------------------------
+        recent_losses.append(loss.item())
+        if len(recent_losses) > window_size:
+            # Keep only the most recent `window_size` losses
+            recent_losses.pop(0)
 
-        # Print sample generation every N steps
+        # ----------------------------
+        # 2. Compute Gaussian-smoothed loss
+        # ----------------------------
+        current_window_length = len(recent_losses)
+        # Take only the last `current_window_length` points of the kernel
+        # so that it matches how many recent losses we have.
+        used_kernel = kernel[-current_window_length:]
+        # Renormalize in case we sliced the kernel
+        used_kernel = used_kernel / used_kernel.sum()
+        
+        # Weighted sum of recent_losses by the (sliced) Gaussian kernel
+        smoothed_loss = sum(l * k for l, k in zip(recent_losses, used_kernel))
+
+        # ----------------------------
+        # 3. Update TQDM progress bar
+        # ----------------------------
+        progress_bar.set_postfix({
+            "Loss (raw)": f"{loss.item():.4f}",
+            "Smoothed Loss": f"{smoothed_loss:.4f}"
+        })
+
+        # ----------------------------
+        # 4. Log smoothed loss to TensorBoard
+        # ----------------------------
+        writer.add_scalar("Loss/Train_iter_smoothed", smoothed_loss, 
+                          epoch * len(dataloader) + batch_idx)
+
+        # Print sample generation every N steps (optional debugging/visualization)
         if num_iters_generate is not None and batch_idx % num_iters_generate == 0:
             # Take the first sample in the batch as a prompt
             prompt = x[:1]  # Shape: [1, seq_len]
@@ -251,7 +317,6 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, writer, epo
             # Extract the generated continuation
             generated_continuation_str = full_generated_str[len(prompt_str):]
             
-            # Print both prompt and generated continuation
             print("\n----- Sample Generation -----")
             print("Prompt:")
             print(repr(prompt_str))
@@ -259,14 +324,16 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, writer, epo
             print(repr(generated_continuation_str))
             print("------------------------------\n")
 
+        # Save checkpoints periodically
         if checkpoint_iters is not None and batch_idx % checkpoint_iters == 0:
             checkpoint_path = os.path.join(checkpoint_dir, f"epoch_{epoch+1}_iter_{batch_idx}.pt")
             torch.save(model.state_dict(), checkpoint_path)
             print(f"Model checkpoint saved at {checkpoint_path}")
 
-    epoch_loss = total_loss / len(dataloader)
-    writer.add_scalar("Loss/Train_Epoch", epoch_loss, epoch)
-    return epoch_loss
+    # ----------------------------
+    # 5. Return the epoch average loss
+    # ----------------------------
+    return smoothed_loss
 
 
 def evaluate(model, dataloader, criterion, device, writer, epoch):
