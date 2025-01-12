@@ -93,6 +93,7 @@ class SmallTransformer(nn.Module):
     def __init__(
         self,
         vocab_size,
+        tokenizer,
         d_model=128,
         n_heads=4,
         num_layers=2,
@@ -103,6 +104,7 @@ class SmallTransformer(nn.Module):
         self.d_model = d_model
         self.embed_tokens = nn.Embedding(vocab_size, d_model)
         self.pos_encoder = PositionalEncoding(d_model, max_len=max_seq_len)
+        self.tokenizer = tokenizer
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -137,6 +139,63 @@ class SmallTransformer(nn.Module):
         logits = self.fc_out(encoded)
         return logits
 
+    def generate(
+        self, 
+        tokenizer, 
+        generated_tokens, 
+        max_length=50, 
+        temperature=1.0, 
+        top_k=50, 
+        top_p=0.95, 
+        do_sample=True
+    ):
+        seq_len = generated_tokens.shape[1]
+        for _ in range(max_length):
+            # Get the model outputs
+            logits = self.forward(x=generated_tokens[:, -1*seq_len:])
+
+            # Get the logits for the last token
+            next_token_logits = logits[:, -1, :]
+
+            # Apply temperature scaling
+            if temperature != 1.0:
+                next_token_logits = next_token_logits / temperature
+
+            # Apply top-k and top-p sampling if enabled
+            if do_sample:
+                # Top-k sampling
+                if top_k > 0:
+                    top_k_values, top_k_indices = torch.topk(next_token_logits, top_k, dim=-1)
+                    mask = next_token_logits < top_k_values[:, -1, None]
+                    next_token_logits[mask] = float('-inf')
+
+                # Top-p (nucleus) sampling
+                if top_p < 1.0:
+                    sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
+                    cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                    sorted_indices_to_remove = cumulative_probs > top_p
+                    sorted_indices_to_remove[:, 1:] = sorted_indices_to_remove[:, :-1].clone()
+                    sorted_indices_to_remove[:, 0] = False
+                    indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                    next_token_logits[indices_to_remove] = float('-inf')
+
+                # Sample from the adjusted distribution
+                probs = torch.softmax(next_token_logits, dim=-1)
+                next_token = torch.multinomial(probs, num_samples=1)
+            else:
+                # Greedy decoding
+                next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+
+            # Append the predicted token to the sequence
+            generated_tokens = torch.cat([generated_tokens, next_token], dim=1)
+
+            # Break if the model generates the special [EOS] token (id: tokenizer.eos_token_id)
+            if tokenizer.eos_token_id and next_token.item() == tokenizer.eos_token_id:
+                break
+
+        return generated_tokens
+
+
 ###############################################################################
 # 4. Training & Evaluation
 ###############################################################################
@@ -153,6 +212,21 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, writer, epo
         loss = criterion(logits.view(-1, logits.size(-1)), y.view(-1))
         loss.backward()
         optimizer.step()
+        # import pdb; pdb.set_trace()
+        if batch_idx % 1000 == 0:
+            outputs = model.generate(
+                model.tokenizer,
+                x[:1], 
+                max_length=50,           # Maximum length of the output
+                temperature=1.0,         # Controls randomness (higher = more random)
+                top_k=50,                # Limits token selection to top-k tokens
+                top_p=0.95,              # Nucleus sampling (selects tokens with cumulative prob >= top_p)
+                do_sample=False           # Enables sampling instead of greedy decoding
+            )
+
+            # Decode and print the generated text
+            generated_text = model.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            print("Generated Text:", generated_text)
 
         # Update the learning rate scheduler if provided
         if scheduler:
@@ -219,6 +293,10 @@ def main():
                         help='Number of worker threads for data loading.')
     parser.add_argument('--dataset', type=str, default="wikitext-2-raw-v1",
                         help='Number of worker threads for data loading.') # for larger: wikitext-103-raw-v1
+    parser.add_argument('--train_size', type=int, default=500000,
+                        help='Train datset size.')
+    parser.add_argument('--d_model', type=int, default=128,
+                        help='Model dimensions.')
 
     args = parser.parse_args()
 
@@ -271,6 +349,11 @@ def main():
     train_ids = tokenize_and_flatten(train_data, tokenizer, max_length=512)
     valid_ids = tokenize_and_flatten(valid_data, tokenizer, max_length=512)
 
+    train_size = args.train_size  
+    train_ids = train_ids[:train_size]
+    val_size = int(train_size / 10)
+    valid_ids = valid_ids[:val_size]
+
     # 2.1 **Print and Log Number of Tokens in Training Set**
     num_train_tokens = len(train_ids)
     print(f"Number of tokens in the training set: {num_train_tokens}")
@@ -303,11 +386,12 @@ def main():
     # ---------------------------
     model = SmallTransformer(
         vocab_size=tokenizer.vocab_size,
-        d_model=128,       # adjust as needed
+        tokenizer=tokenizer,
+        d_model=args.d_model,       # adjust as needed
         n_heads=4,         # adjust as needed
         num_layers=2,      # adjust as needed
         dropout=0.1,
-        max_seq_len=args.seq_len
+        max_seq_len=args.seq_len, 
     ).to(DEVICE)
 
     # 1.1 **Print and Log Model Parameters**
