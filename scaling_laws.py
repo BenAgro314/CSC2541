@@ -217,8 +217,8 @@ def main():
                         help='Learning rate for the optimizer.')
     parser.add_argument('--num_workers', type=int, default=4,
                         help='Number of worker threads for data loading.')
-    parser.add_argument('--dataset', type=str, default="wikitext-103-raw-v1",
-                        help='Number of worker threads for data loading.') # "wikitext-2-raw-v1"
+    parser.add_argument('--dataset', type=str, default="wikitext-2-raw-v1",
+                        help='Number of worker threads for data loading.') # for larger: wikitext-103-raw-v1
 
     args = parser.parse_args()
 
