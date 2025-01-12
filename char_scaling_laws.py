@@ -222,6 +222,8 @@ def gaussian_kernel(size=10, sigma=2.0):
     kernel /= kernel.sum()
     return kernel
 
+import time  # Ensure that the time module is imported
+
 def train_one_epoch(
     model,
     dataloader,
@@ -238,14 +240,22 @@ def train_one_epoch(
 ):
     model.train()
     
+    # Initialize total loss
+    total_loss = 0.0
+    
     # We'll keep track of recent batch losses in this list:
     recent_losses = []
     # Pre-compute a Gaussian kernel of desired size:
     kernel = gaussian_kernel(size=window_size, sigma=2.0)
     
+    # Record the start time of the epoch
+    epoch_start_time = time.time()
+    
     progress_bar = tqdm(enumerate(dataloader), total=len(dataloader), desc=f"Epoch {epoch+1} [Train]")
     
     for batch_idx, (x, y) in progress_bar:
+        batch_start_time = time.time()  # Start time of the current batch
+        
         x, y = x.to(device), y.to(device)
 
         optimizer.zero_grad()
@@ -286,20 +296,38 @@ def train_one_epoch(
         smoothed_loss = sum(l * k for l, k in zip(recent_losses, used_kernel))
 
         # ----------------------------
-        # 3. Update TQDM progress bar
+        # 3. Calculate and Log ETA
+        # ----------------------------
+        elapsed_time = time.time() - epoch_start_time  # Total elapsed time since epoch start
+        avg_time_per_batch = elapsed_time / (batch_idx + 1)  # Average time per batch
+        remaining_batches = len(dataloader) - (batch_idx + 1)  # Batches left
+        eta_seconds = avg_time_per_batch * remaining_batches  # Estimated remaining time in seconds
+
+        # Convert ETA to a more readable format (e.g., minutes and seconds)
+        eta_minutes = int(eta_seconds // 60)
+        eta_secs = int(eta_seconds % 60)
+        # eta_formatted = f"{eta_minutes}m {eta_secs}s"
+
+        # Log ETA to TensorBoard
+        writer.add_scalar("Time/ETA", eta_seconds, epoch * len(dataloader) + batch_idx)
+
+        # ----------------------------
+        # 4. Update TQDM progress bar
         # ----------------------------
         progress_bar.set_postfix({
             "Loss (raw)": f"{loss.item():.4f}",
-            "Smoothed Loss": f"{smoothed_loss:.4f}"
+            "Smoothed Loss": f"{smoothed_loss:.4f}",
         })
 
         # ----------------------------
-        # 4. Log smoothed loss to TensorBoard
+        # 5. Log smoothed loss to TensorBoard
         # ----------------------------
         writer.add_scalar("Loss/Train_iter_smoothed", smoothed_loss, 
                           epoch * len(dataloader) + batch_idx)
 
-        # Print sample generation every N steps (optional debugging/visualization)
+        # ----------------------------
+        # 6. Generate and Log Sample Text
+        # ----------------------------
         if num_iters_generate is not None and batch_idx % num_iters_generate == 0:
             # Take the first sample in the batch as a prompt
             prompt = x[:1]  # Shape: [1, seq_len]
@@ -330,16 +358,19 @@ def train_one_epoch(
                 global_step=epoch * len(dataloader) + batch_idx
             )
 
-        # Save checkpoints periodically
+        # ----------------------------
+        # 7. Save Checkpoints Periodically
+        # ----------------------------
         if checkpoint_iters is not None and batch_idx % checkpoint_iters == 0:
             checkpoint_path = os.path.join(checkpoint_dir, f"epoch_{epoch+1}_iter_{batch_idx}.pt")
             torch.save(model.state_dict(), checkpoint_path)
             print(f"Model checkpoint saved at {checkpoint_path}")
 
     # ----------------------------
-    # 5. Return the epoch average loss
+    # 8. Return the epoch average smoothed loss
     # ----------------------------
     return smoothed_loss
+
 
 
 def evaluate(model, dataloader, criterion, device, writer, epoch):
@@ -382,7 +413,7 @@ def main():
                         help='Batch size for training.')
     parser.add_argument('--epochs', type=int, default=1,
                         help='Number of training epochs.')
-    parser.add_argument('--lr', type=float, default=5e-4,
+    parser.add_argument('--lr', type=float, default=3e-4,
                         help='Learning rate for the optimizer.')
     parser.add_argument('--num_workers', type=int, default=4,
                         help='Number of worker threads for data loading.')
@@ -510,7 +541,7 @@ def main():
     # 8. Loss, Optimizer, Scheduler
     # ---------------------------
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=0.1) # from https://wandb.ai/vincenttu/blog_posts/reports/Meta-AI-Released-LLaMA--VmlldzozNjM5MTAz
     total_steps = args.epochs * len(train_loader)
     scheduler = CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=args.lr/10)
 

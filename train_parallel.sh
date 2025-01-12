@@ -50,6 +50,14 @@ group3_commands=(
     "python char_scaling_laws.py --experiment_name ts_d256_l4_h4_t1.6e7 --num_train_tokens 160000000 --n_layers 4 --d_model 256 --n_heads 4"
 )
 
+group4_commands=(
+    "python char_scaling_laws.py --experiment_name ts_d512_l8_h8_t1e6 --num_train_tokens 1000000     --n_layers 8 --d_model 512 --n_heads 8"
+    "python char_scaling_laws.py --experiment_name ts_d512_l8_h8_t2e6 --num_train_tokens 2000000     --n_layers 8 --d_model 512 --n_heads 8"
+    "python char_scaling_laws.py --experiment_name ts_d512_l8_h8_t4e6 --num_train_tokens 4000000     --n_layers 8 --d_model 512 --n_heads 8"
+    "python char_scaling_laws.py --experiment_name ts_d512_l8_h8_t8e6 --num_train_tokens 8000000     --n_layers 8 --d_model 512 --n_heads 8"
+    "python char_scaling_laws.py --experiment_name ts_d512_l8_h8_t1.6e7 --num_train_tokens 160000000 --n_layers 8 --d_model 512 --n_heads 8"
+)
+
 # Launch each group in the background
 run_group "Group1_d64_l1_h1" "${group1_commands[@]}" &
 pid1=$!
@@ -58,6 +66,9 @@ run_group "Group2_d128_l2_h2" "${group2_commands[@]}" &
 pid2=$!
 
 run_group "Group3_d256_l4_h4" "${group3_commands[@]}" &
+pid3=$!
+
+run_group "Group4_d512_l8_h8" "${group4_commands[@]}" &
 pid3=$!
 
 # Wait for all background jobs to finish
