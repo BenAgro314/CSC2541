@@ -334,7 +334,7 @@ def train_one_epoch(
         # ----------------------------
         # 7. Generate and Log Sample Text
         # ----------------------------
-        if num_iters_generate is not None and (batch_idx % num_iters_generate == 0):
+        if (batch_idx == len(dataloader) - 1) or (num_iters_generate is not None and (batch_idx % num_iters_generate == 0)):
             # Take the first sample in the batch as a prompt
             prompt = x[:1]  # Shape: [1, seq_len]
             generated = model.generate(prompt, max_length=2*model.max_seq_len, do_sample=False)
