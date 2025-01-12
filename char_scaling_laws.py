@@ -340,6 +340,7 @@ def train_one_epoch(
             num_tokens = batch_size * seq_len * num_iters
             approx_num_flops = 6 * num_params * num_tokens
             writer.add_scalar("Loss/Train_per_flops", loss.item(), approx_num_flops)
+            writer.add_scalar("Loss/Train_per_flops_smoothed", smoothed_loss, approx_num_flops)
 
         # ----------------------------
         # 7. Generate and Log Sample Text
