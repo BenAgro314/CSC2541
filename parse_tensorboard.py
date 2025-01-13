@@ -58,7 +58,7 @@ if __name__ == "__main__":
         tensorboard_files = glob.glob(os.path.join(log_dir, "logs/*"))
         assert len(tensorboard_files) == 1
         params = parse_tensorboard_log(tensorboard_files[0], "Model/Total Parameters")[1][0]
-        step_multiplier = batch_size * 6 * params / 1e15  # 1e15 corresponds to petaflops
+        step_multiplier = batch_size * 6 * params * seq_len / 1e15  # 1e15 corresponds to petaflops
         data = parse_tensorboard_log(tensorboard_files[0], "Loss/Train_iter_smoothed", step_multiplier)
         # params_to_data[params] = data
         params_to_data.append((params, data))
