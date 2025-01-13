@@ -15,8 +15,19 @@ from datasets import load_dataset
 # Additional imports for enhancements
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from torch.optim.lr_scheduler import LambdaLR  # Updated import
 import json
+from torch.utils.data import Sampler
+
+class TokenLimitedSampler(Sampler):
+    def __init__(self, data_source, num_tokens):
+        self.data_source = data_source
+        self.num_tokens = num_tokens
+
+    def __iter__(self):
+        return iter(torch.randperm(len(self.data_source))[:self.num_tokens].tolist())
+
+    def __len__(self):
+        return self.num_tokens
 
 ###############################################################################
 # 1. Character-Level Dataset and Vocab
@@ -499,10 +510,6 @@ def main():
     train_text = "\n".join(train_texts)
     valid_text = "\n".join(valid_texts)
 
-    # Optionally truncate training data for debugging
-    if args.num_train_tokens is not None:
-        train_text = train_text[:args.num_train_tokens]
-
     # 2.1 Print and log total characters in training set
     num_train_chars = len(train_text)
     print(f"Number of chars in training set: {num_train_chars}")
@@ -517,10 +524,11 @@ def main():
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=True if args.num_train_tokens is None else False,
         collate_fn=collate_fn,
         num_workers=args.num_workers,
-        pin_memory=(DEVICE == "cuda")
+        pin_memory=(DEVICE == "cuda"),
+        sampler=TokenLimitedSampler(train_dataset, int(round(args.num_train_tokens / args.seq_len))) if args.num_train_tokens is not None else None,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -567,18 +575,13 @@ def main():
 
     total_steps = args.epochs * len(train_loader)
     
-    # Define Linear Warmup + Cosine Annealing Scheduler using LambdaLR
-    # def lr_lambda(current_step):
-    #     warmup_steps = 1000
-    #     if current_step < warmup_steps:
-    #         return float(current_step) / float(max(1, warmup_steps))
-    #     else:
-    #         progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
-    #         # Cosine annealing to decay to 1/10th of initial LR
-    #         return 0.1 + 0.45 * (1 + math.cos(math.pi * progress))
-
-    # scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=0.1*args.lr)
+
+    print(f"Num training iterations: {len(train_loader)}")
+    num_training_tokens = len(train_loader) * args.seq_len * args.batch_size
+    print(f"Num training tokens: {num_training_tokens}")
+    assert num_training_tokens <= len(train_text), "More training tokens than available in the dataset!"
+    print(f"Estimated Petaflops: {6 * total_params * num_training_tokens / 1e15}")
 
     # ---------------------------
     # 9. Training Loop
