@@ -35,13 +35,11 @@ class CharacterDataset(Dataset):
 
     def __len__(self):
         # We'll generate slices up to len(text)-seq_len
-        # return len(self.text) - self.seq_len
-        return (len(self.text) - self.seq_len) // self.seq_len
+        return len(self.text) - self.seq_len
 
     def __getitem__(self, idx):
-        idx_seq_len = idx * self.seq_len
-        x_str = self.text[idx_seq_len : idx_seq_len + self.seq_len]
-        y_str = self.text[idx_seq_len + 1 : idx_seq_len + self.seq_len + 1]
+        x_str = self.text[idx : idx + self.seq_len]
+        y_str = self.text[idx + 1 : idx + self.seq_len + 1]
         # Convert chars to IDs
         x_ids = [self.char2idx.get(ch, self.char2idx[' ']) for ch in x_str]  # Handle unknown chars
         y_ids = [self.char2idx.get(ch, self.char2idx[' ']) for ch in y_str]
