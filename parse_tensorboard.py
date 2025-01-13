@@ -49,6 +49,8 @@ if __name__ == "__main__":
     min_params = float('inf')
     max_params = 0
     params_to_data = []
+    min_x = 1e-3
+    cmap = plt.get_cmap("turbo")
     for log_dir in log_dirs:
         print(f"Processing {log_dir}")
         with open(os.path.join(log_dir, "args.json")) as f:
@@ -64,16 +66,19 @@ if __name__ == "__main__":
         params_to_data.append((params, data))
         min_params = min(min_params, params)
         max_params = max(max_params, params)
-    cmap = plt.get_cmap("viridis")
     seen_params = set()
+    log_params_max = math.log(max_params)
+    log_params_min = math.log(min_params)
     for params, data in params_to_data:
         print(f"Plotting {params} params")
-        normalized_params = math.log(params - min_params + 1) / math.log(max_params - min_params + 1)
+        log_params = math.log(params)
+        normalized_params = (log_params - log_params_min) / (log_params_max - log_params_min)
         if params not in seen_params:
             plt.plot(data[0], data[1], label=f"{params} params", c=cmap(normalized_params))
         else:
             plt.plot(data[0], data[1], c=cmap(normalized_params))
         seen_params.add(params)
+    plt.xlim(left=min_x)
     plt.xlabel("PetaFLOPs")
     plt.ylabel("Training Loss")
     plt.xscale("log")
