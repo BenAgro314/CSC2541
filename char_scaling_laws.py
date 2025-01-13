@@ -568,16 +568,17 @@ def main():
     total_steps = args.epochs * len(train_loader)
     
     # Define Linear Warmup + Cosine Annealing Scheduler using LambdaLR
-    def lr_lambda(current_step):
-        warmup_steps = 1000
-        if current_step < warmup_steps:
-            return float(current_step) / float(max(1, warmup_steps))
-        else:
-            progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
-            # Cosine annealing to decay to 1/10th of initial LR
-            return 0.1 + 0.45 * (1 + math.cos(math.pi * progress))
+    # def lr_lambda(current_step):
+    #     warmup_steps = 1000
+    #     if current_step < warmup_steps:
+    #         return float(current_step) / float(max(1, warmup_steps))
+    #     else:
+    #         progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+    #         # Cosine annealing to decay to 1/10th of initial LR
+    #         return 0.1 + 0.45 * (1 + math.cos(math.pi * progress))
 
-    scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
+    # scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=0.1*args.lr)
 
     # ---------------------------
     # 9. Training Loop
