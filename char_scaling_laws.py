@@ -337,7 +337,7 @@ def train_one_epoch(
             batch_size = x.size(0)
             seq_len = x.size(1)
             num_iters = epoch * len(dataloader) + (batch_idx + 1)
-            num_tokens = batch_size * seq_len * num_iters
+            num_tokens = batch_size * num_iters
             approx_num_flops = 6 * num_params * num_tokens
             writer.add_scalar("Loss/Train_per_flops", loss.item(), approx_num_flops)
             writer.add_scalar("Loss/Train_per_flops_smoothed", smoothed_loss, approx_num_flops)
