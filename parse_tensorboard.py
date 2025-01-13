@@ -80,10 +80,13 @@ if __name__ == "__main__":
     log_params_max = math.log(max_params)
     log_params_min = math.log(min_params)
     min_x = None
+    warmup = 1000
     for params, data in params_to_data:
         print(f"Plotting {params} params")
         log_params = math.log(params)
         normalized_params = (log_params - log_params_min) / (log_params_max - log_params_min)
+        data[0] = data[0][warmup:]
+        data[1] = data[1][warmup:]
         if params not in seen_params:
             plt.plot(data[0], data[1], label=f"{params} params", c=cmap(normalized_params))
         else:
@@ -99,7 +102,7 @@ if __name__ == "__main__":
     # Set y-axis to log scale (base 2)
     plt.yscale('log', base=2)
     # Manually set y-ticks (positions) and labels
-    y_ticks = [.5, 1, 2, 3, 4, 5, 6]
+    y_ticks = [.5, 1, 2, 3]
     plt.yticks(y_ticks, [str(y) for y in y_ticks])  # Display values as labels
 
     plt.legend()
