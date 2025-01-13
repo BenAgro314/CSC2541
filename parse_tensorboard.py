@@ -43,14 +43,14 @@ def parse_tensorboard_log(event_file_path, tag, step_multiplier=1):
     # print(f"Successfully saved {len(data)} data points to {output_json_path}")
     return x, y
 
-READ_BOARD = True
+READ_BOARD = False
 if __name__ == "__main__":
     log_dirs = glob.glob("outputs/*")
     min_params = float('inf')
     max_params = 0
     params_to_data = []
     min_x = 1e-3
-    cmap = plt.get_cmap("turbo")
+    cmap = plt.get_cmap("viridis")
     if READ_BOARD:
         for log_dir in log_dirs:
             print(f"Processing {log_dir}")
@@ -67,15 +67,19 @@ if __name__ == "__main__":
             params_to_data.append((params, data))
             min_params = min(min_params, params)
             max_params = max(max_params, params)
-        seen_params = set()
-        log_params_max = math.log(max_params)
-        log_params_min = math.log(min_params)
         with open("train_per_flops_smoothed.json", "w") as f:
             json.dump(params_to_data, f)
     else:
         with open("train_per_flops_smoothed.json") as f:
             params_to_data = json.load(f)
 
+    seen_params = set()
+    params_to_data = sorted(params_to_data, key=lambda x: x)
+    min_params = params_to_data[0][0]
+    max_params = params_to_data[-1][0]
+    log_params_max = math.log(max_params)
+    log_params_min = math.log(min_params)
+    min_x = None
     for params, data in params_to_data:
         print(f"Plotting {params} params")
         log_params = math.log(params)
@@ -85,11 +89,19 @@ if __name__ == "__main__":
         else:
             plt.plot(data[0], data[1], c=cmap(normalized_params))
         seen_params.add(params)
-    plt.xlim(left=min_x)
+        if min_x is None:
+            min_x = data[0][-1]
+    plt.xlim(left=min_x*0.8)
     plt.xlabel("PetaFLOPs")
     plt.ylabel("Training Loss")
     plt.xscale("log")
-    plt.yscale("log")
+
+    # Set y-axis to log scale (base 2)
+    plt.yscale('log', base=2)
+    # Manually set y-ticks (positions) and labels
+    y_ticks = [.5, 1, 2, 3, 4, 5, 6]
+    plt.yticks(y_ticks, [str(y) for y in y_ticks])  # Display values as labels
+
     plt.legend()
     plt.savefig("train_per_flops_smoothed.png")
 
