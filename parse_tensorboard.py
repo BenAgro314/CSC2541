@@ -43,32 +43,39 @@ def parse_tensorboard_log(event_file_path, tag, step_multiplier=1):
     # print(f"Successfully saved {len(data)} data points to {output_json_path}")
     return x, y
 
+READ_BOARD = True
 if __name__ == "__main__":
     log_dirs = glob.glob("outputs/*")
-    params_to_data = {}
     min_params = float('inf')
     max_params = 0
     params_to_data = []
     min_x = 1e-3
     cmap = plt.get_cmap("turbo")
-    for log_dir in log_dirs:
-        print(f"Processing {log_dir}")
-        with open(os.path.join(log_dir, "args.json")) as f:
-            args = json.load(f)
-            seq_len = args["seq_len"]
-            batch_size = args["batch_size"]
-        tensorboard_files = glob.glob(os.path.join(log_dir, "logs/*"))
-        assert len(tensorboard_files) == 1
-        params = parse_tensorboard_log(tensorboard_files[0], "Model/Total Parameters")[1][0]
-        step_multiplier = batch_size * 6 * params * seq_len / 1e15  # 1e15 corresponds to petaflops
-        data = parse_tensorboard_log(tensorboard_files[0], "Loss/Train_iter_smoothed", step_multiplier)
-        # params_to_data[params] = data
-        params_to_data.append((params, data))
-        min_params = min(min_params, params)
-        max_params = max(max_params, params)
-    seen_params = set()
-    log_params_max = math.log(max_params)
-    log_params_min = math.log(min_params)
+    if READ_BOARD:
+        for log_dir in log_dirs:
+            print(f"Processing {log_dir}")
+            with open(os.path.join(log_dir, "args.json")) as f:
+                args = json.load(f)
+                seq_len = args["seq_len"]
+                batch_size = args["batch_size"]
+            tensorboard_files = glob.glob(os.path.join(log_dir, "logs/*"))
+            assert len(tensorboard_files) == 1
+            params = parse_tensorboard_log(tensorboard_files[0], "Model/Total Parameters")[1][0]
+            step_multiplier = batch_size * 6 * params * seq_len / 1e15  # 1e15 corresponds to petaflops
+            data = parse_tensorboard_log(tensorboard_files[0], "Loss/Train_iter_smoothed", step_multiplier)
+            # params_to_data[params] = data
+            params_to_data.append((params, data))
+            min_params = min(min_params, params)
+            max_params = max(max_params, params)
+        seen_params = set()
+        log_params_max = math.log(max_params)
+        log_params_min = math.log(min_params)
+        with open("train_per_flops_smoothed.json", "w") as f:
+            json.dump(params_to_data, f)
+    else:
+        with open("train_per_flops_smoothed.json") as f:
+            params_to_data = json.load(f)
+
     for params, data in params_to_data:
         print(f"Plotting {params} params")
         log_params = math.log(params)
