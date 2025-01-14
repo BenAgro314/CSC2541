@@ -8,7 +8,7 @@ import math
 import numpy as np
 import json
 
-READ = False # True
+READ = False # True # True
 
 def parse_tensorboard_log(event_file_path, tag):
     if not os.path.isfile(event_file_path):
@@ -81,7 +81,7 @@ minima_flops = []
 
 for num_flops, data in flops_to_curve_items: #flops_to_curve.items():
     # if num_flops == 0.3
-    if num_flops >= 10: #   or num_flops < 3.0: #or num_flops == 0.3 or num_flops == 1.0 or num_flops == 0.6:
+    if num_flops >= 30: # or num_flops == 0.3 or num_flops == 1.0 or num_flops == 3.0 or num_flops == 6.0: #  or num_flops == 0.3 or num_flops == 1.0 or num_flops == 0.6:
         continue
     new_data = []
     for datum in data:
@@ -158,4 +158,17 @@ plt.xlabel("Number of Petaflops")
 plt.xscale("log")
 plt.yscale("log")
 plt.savefig("minima_tokens_vs_flops.png")
+plt.close("all")
+
+print(minima_params)
+print(minima_tokens)
+plt.scatter(minima_params, minima_tokens)
+m, b = np.polyfit([math.log10(m) for m in minima_params], [math.log10(m) for m in minima_tokens], 1)
+plt.plot(minima_params, [10**(m*math.log10(x) + b) for x in minima_params], label=f"y={m:.2f}x + {b:.2f}", linestyle="--")
+plt.legend()
+plt.ylabel("Number of Tokens")
+plt.xlabel("Number of Params")
+plt.xscale("log")
+plt.yscale("log")
+plt.savefig("minima_tokens_vs_params.png")
 plt.close("all")
