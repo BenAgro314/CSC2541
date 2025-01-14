@@ -8,7 +8,7 @@ import math
 import numpy as np
 import json
 
-READ = False # True # True
+# READ = False # True # True
 
 def parse_tensorboard_log(event_file_path, tag):
     if not os.path.isfile(event_file_path):
@@ -32,40 +32,53 @@ log_dirs = glob.glob("outputs/*")
 
 flops_to_curve = {}
 
-if READ:
-    for log_dir in log_dirs:
-        print(f"Processing {log_dir}")
-        with open(os.path.join(log_dir, "args.json")) as f:
-            args = json.load(f)
-            seq_len = args["seq_len"]
-            batch_size = args["batch_size"]
-        tensorboard_files = glob.glob(os.path.join(log_dir, "logs/*"))
-        assert len(tensorboard_files) == 1
-        try:
-            params = parse_tensorboard_log(tensorboard_files[0], "Model/Total Parameters")[0].value
-            data = parse_tensorboard_log(tensorboard_files[0], "Loss/Train_iter_smoothed")
-        except Exception as e:
-            continue
-        num_iters = data[-1].step
-        final_loss = data[-1].value
-        #num_flops = num_iters * batch_size * seq_len * params * 6
-        num_peta_flops = float(log_dir.split("/")[1].split("_")[0][5:])
-        name = log_dir.split("/")[1]
+for log_dir in log_dirs:
+    print(f"Processing {log_dir}")
+    with open(os.path.join(log_dir, "args.json")) as f:
+        args = json.load(f)
+        seq_len = args["seq_len"]
+        batch_size = args["batch_size"]
+    json_files = glob.glob(os.path.join(log_dir, "logs/*.json"))
+    if len(json_files) == 0:
+        continue
+    assert len(json_files) == 1, f"{len(json_files)}"
+    try:
+        with open(json_files[0], "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"warning: failed to read {log_dir}")
+        continue
+    final_loss = data["Loss/Train_iter_smoothed"][-1]["value"]
+    num_iters = data["Loss/Train_iter_smoothed"][-1]["step"]
+    print(num_iters)
+    params = data["Model/Total Parameters"][-1]["value"]
+    if num_iters < 50:
+        continue
+    # assert len(tensorboard_files) == 1
+    # try:
+    #     params = parse_tensorboard_log(tensorboard_files[0], "Model/Total Parameters")[0].value
+    #     data = parse_tensorboard_log(tensorboard_files[0], "Loss/Train_iter_smoothed")
+    # except Exception as e:
+    #     continue
+    # num_iters = data[-1].step
+    # final_loss = data[-1].value
+    #num_flops = num_iters * batch_size * seq_len * params * 6
+    num_peta_flops = float(log_dir.split("/")[1].split("_")[0][5:])
+    name = log_dir.split("/")[1]
+    if params < 2e6:
+        continue
 
-        print(f"params={params}, final_loss={final_loss}, num_pflops={num_peta_flops}")
+    print(f"params={params}, final_loss={final_loss}, num_pflops={num_peta_flops}")
 
-        # if "d128_l2_h2" in log_dir:
-        #     continue
+    # if "d128_l2_h2" in log_dir:
+    #     continue
 
-        if num_peta_flops not in flops_to_curve:
-            flops_to_curve[num_peta_flops] = []
-        flops_to_curve[num_peta_flops].append((params, final_loss, name))
-    with open("flops_to_curve.json", "w") as f:
-        json.dump(flops_to_curve, f)
-else:
-    with open("flops_to_curve.json") as f:
-        flops_to_curve = json.load(f)
-        flops_to_curve = {float(k): v for k, v in flops_to_curve.items()}
+    if num_peta_flops not in flops_to_curve:
+        flops_to_curve[num_peta_flops] = []
+    flops_to_curve[num_peta_flops].append((params, final_loss, name))
+with open("flops_to_curve.json", "w") as f:
+    json.dump(flops_to_curve, f)
+
 
 min_params = min([v[0] for g in flops_to_curve.values() for v in g])
 max_params = max([v[0] for g in flops_to_curve.values() for v in g])
@@ -80,14 +93,11 @@ minima_params = []
 minima_flops = []
 
 for num_flops, data in flops_to_curve_items: #flops_to_curve.items():
-    # if num_flops == 0.3
-    if num_flops >= 30: # or num_flops == 0.3 or num_flops == 1.0 or num_flops == 3.0 or num_flops == 6.0: #  or num_flops == 0.3 or num_flops == 1.0 or num_flops == 0.6:
-        continue
+    # if num_flops >= 6:
+    #     continue
     new_data = []
     for datum in data:
         name = datum[-1]
-        if "d128_l2_h2" in name: # or "d64_l2_h2" in name or "d128_l3_h2" in name:
-            continue
         new_data.append(datum)
     data = new_data
     xs_log = [math.log10(x[0]) for x in data]  # log10 of x-values

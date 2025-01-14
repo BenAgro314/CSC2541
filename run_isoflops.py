@@ -55,8 +55,8 @@ flop_counts = [
     3e16, 
     6e16, 
     1e17, 
-    # 3e17, 
-    # 6e17, 
+    3e17, 
+    6e17, 
 ]
 
 
@@ -82,7 +82,7 @@ flop_counts = [
 # ]
 
 model_sizes = [
-    (d, max(1, d//64), max(d//128, 2)) for d in range(64, 64 * 13, 64)
+    (d, max(1, d//64), max(d//64, 2)) for d in range(320, 64 * 17, 64)
 ]
 print("Model sizes:")
 import matplotlib.pyplot as plt
@@ -136,6 +136,6 @@ for flop_count in flop_counts:
         print("Executing command:", " ".join(command))
         
         # Launch the subprocess in a separate thread to avoid blocking
-        threading.Thread(target=run_subprocess, args=(command, env)).start()
+        # threading.Thread(target=run_subprocess, args=(command, env)).start()
         
         count += 1
