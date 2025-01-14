@@ -7,7 +7,7 @@ import sys
 import threading
 import os
 
-NUM_CUDA_DEVICES = 1
+NUM_CUDA_DEVICES = 2
 
 def count_params(d_model: int, n_heads: int, n_layers: int):
     model = SmallTransformer(vocab_size=174, d_model=d_model, n_heads=n_heads, num_layers=n_layers)
@@ -47,39 +47,55 @@ def run_subprocess(command, env):
 flop_counts = [
     # 1e14, 
     # 3e14, 
-    6e14, 
+    # 6e14, 
     1e15, # 1 PFLOP
     3e15, 
     6e15, 
     1e16, 
     3e16, 
+    6e16, 
+    1e17, 
+    # 3e17, 
+    # 6e17, 
 ]
 
 
 # d_model, n_heads, n_layers
-model_sizes = [ 
-    (48, 1, 1),
-    #
-    (64, 2, 1),
-    (64, 2, 2),
-    (64, 2, 3),
-    #
-    (128, 2, 2),
-    (128, 2, 3),
-    (128, 2, 4),
-    #
-    (256, 4, 4),
-    (256, 4, 5),
-    (256, 4, 6),
-    # 
-    (384, 6, 6),
-    (384, 6, 7),
-    (384, 6, 8),
-    #
-    (512, 8, 8),
-    # (512, 8, 9),
-    # (512, 8, 10),
+# model_sizes = [ 
+#     # (48, 1, 1),
+#     #
+#     (64, 1, 2),
+#     #
+#     (96, 1, 4),
+#     #
+#     (128, 2, 4),
+#     #
+#     (192, 2, 4),
+#     #
+#     (256, 4, 4),
+#     # 
+#     (384, 6, 4),
+#     #
+#     (512, 8, 4),
+#     #
+#     (768, 8, 8),
+# ]
+
+model_sizes = [
+    (d, max(1, d//64), max(d//128, 2)) for d in range(64, 64 * 13, 64)
 ]
+print("Model sizes:")
+import matplotlib.pyplot as plt
+xs = []
+for model_size in model_sizes:
+    d_model, n_heads, n_layers = model_size
+    print(f"d_model={d_model}, n_heads={n_heads}, num_layers={n_layers}")
+    params = count_params(d_model, n_heads, n_layers)
+    xs.append(params)
+plt.scatter(xs, [1 for _ in range(len(xs))])
+plt.xscale("log")
+plt.savefig("params.png")
+plt.close("all")
 
 count = 0
 for flop_count in flop_counts:
@@ -93,7 +109,7 @@ for flop_count in flop_counts:
             continue
         train_iters = tokens / (128 * 128)
         print(f"train_iters={train_iters}")
-        if train_iters < 1000:
+        if train_iters < 100:
             print(f"Skipping (train_iters={train_iters}) for flop_count={flop_count}, d_model={d_model}, n_heads={n_heads}, n_layers={n_layers}")
             continue
         

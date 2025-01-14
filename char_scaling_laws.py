@@ -17,6 +17,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import json
 from torch.utils.data import Sampler
+import json
 
 class TokenLimitedSampler(Sampler):
     def __init__(self, data_source, num_tokens):
@@ -236,6 +237,18 @@ def gaussian_kernel(size=10, sigma=2.0):
     kernel /= kernel.sum()
     return kernel
 
+def add_to_log_dict(log_dict: dict | None, key, y_val, x_val):
+    if log_dict is None:
+        return
+    if key not in log_dict:
+        log_dict[key] = []
+    log_dict[key].append(
+        {
+            "value": y_val,
+            "step": x_val,
+        }
+    )
+
 def train_one_epoch(
     model,
     dataloader,
@@ -250,6 +263,8 @@ def train_one_epoch(
     checkpoint_dir=None, 
     window_size=10,  # Added a window_size for clarity
     num_params: int | None = None,
+    log_dict: dict | None = None,
+    log_dir: str | None = None,
 ):
     model.train()
     
@@ -343,6 +358,7 @@ def train_one_epoch(
         # ----------------------------
         writer.add_scalar("Loss/Train_iter_smoothed", smoothed_loss, 
                           epoch * len(dataloader) + batch_idx)
+        add_to_log_dict(log_dict, "Loss/Train_iter_smoothed", smoothed_loss, epoch * len(dataloader) + batch_idx)
 
         if num_params is not None:
             batch_size = x.size(0)
@@ -394,6 +410,17 @@ def train_one_epoch(
             torch.save(model.state_dict(), checkpoint_path)
             print(f"Model checkpoint saved at {checkpoint_path}")
 
+        if log_dict is not None and batch_idx % 100 == 0:
+            assert log_dir is not None
+            log_dir_tmp = os.path.join(log_dir, "log_file.json")
+            with open(log_dir_tmp, "w") as f:
+                json.dump(log_dict, f, indent=4)
+
+    if log_dict is not None:
+        assert log_dir is not None
+        log_dir_tmp = os.path.join(log_dir, "log_file.json")
+        with open(log_dir_tmp, "w") as f:
+            json.dump(log_dict, f, indent=4)
     # Return the epoch average smoothed loss
     return smoothed_loss
 
@@ -460,6 +487,8 @@ def main():
 
     args = parser.parse_args()
 
+    log_dict = {}
+
     # ---------------------------
     # 2. Setup Output Directories
     # ---------------------------
@@ -514,6 +543,7 @@ def main():
     num_train_chars = len(train_text)
     print(f"Number of chars in training set: {num_train_chars}")
     writer.add_scalar("Data/Number of Training Chars", num_train_chars, 0)
+    add_to_log_dict(log_dict, "Data/Number of Training Chars", num_train_chars, 0)
 
     # ---------------------------
     # 6. Create Dataset & DataLoaders
@@ -560,6 +590,8 @@ def main():
     writer.add_scalar("Model/Total Parameters", total_params, 0)
     writer.add_scalar("Model/Trainable Parameters", trainable_params, 0)
 
+    add_to_log_dict(log_dict, "Model/Total Parameters", total_params, 0)
+
     # ---------------------------
     # 8. Loss, Optimizer, Scheduler
     # ---------------------------
@@ -583,6 +615,7 @@ def main():
     assert num_training_tokens <= len(train_text), "More training tokens than available in the dataset!"
     print(f"Estimated Petaflops: {6 * total_params * num_training_tokens / 1e15}")
 
+
     # ---------------------------
     # 9. Training Loop
     # ---------------------------
@@ -601,6 +634,8 @@ def main():
             checkpoint_iters=args.checkpoint_iters,
             checkpoint_dir=checkpoint_dir,
             num_params=total_params,
+            log_dict=log_dict,
+            log_dir=log_dir,
         )
         if args.run_val:
             val_loss = evaluate(model, val_loader, criterion, DEVICE, writer, epoch)
