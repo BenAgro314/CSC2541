@@ -72,11 +72,24 @@ max_params = max([v[0] for g in flops_to_curve.values() for v in g])
 min_flops = min(flops_to_curve.keys())
 max_flops = max(flops_to_curve.keys())
 
-cmap = plt.get_cmap("viridis")
+cmap = plt.get_cmap("turbo")
 
-for num_flops, data in flops_to_curve.items():
-    if num_flops >= 10:
-        break
+flops_to_curve_items = sorted(flops_to_curve.items(), key=lambda x: x[0])
+
+minima_params = []
+minima_flops = []
+
+for num_flops, data in flops_to_curve_items: #flops_to_curve.items():
+    # if num_flops == 0.3
+    if num_flops >= 10: #   or num_flops < 3.0: #or num_flops == 0.3 or num_flops == 1.0 or num_flops == 0.6:
+        continue
+    new_data = []
+    for datum in data:
+        name = datum[-1]
+        if "d128_l2_h2" in name: # or "d64_l2_h2" in name or "d128_l3_h2" in name:
+            continue
+        new_data.append(datum)
+    data = new_data
     xs_log = [math.log10(x[0]) for x in data]  # log10 of x-values
     ys = [x[1] for x in data]                  # y-values
 
@@ -104,6 +117,16 @@ for num_flops, data in flops_to_curve.items():
     plt.plot(xs_fit_large, ys_fit_large, linestyle="--", color=color)
     plt.plot(xs_fit, ys_fit, color=color)
 
+    # plot minima
+    minima = 10**(-coeffs[1] / (2 * coeffs[0]))
+    y_val = poly(math.log10(minima))
+    plt.scatter([minima], [y_val], color=color, marker="x")
+    print(f"pflops={num_flops} minima params={minima}, loss value={y_val}")
+
+    minima_params.append(minima)
+    minima_flops.append(num_flops)
+
+
 plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.10),
           ncol=3, fancybox=True, shadow=True)
 # plt.yscale("log")
@@ -111,4 +134,28 @@ plt.xscale("log")
 plt.savefig("flops_to_curve.png")
 plt.xlabel("Number of Parameters")
 plt.ylabel("Training Loss")
+plt.close("all")
+
+plt.scatter(minima_flops, minima_params)
+# linear best fit
+m, b = np.polyfit([math.log10(m) for m in minima_flops], [math.log10(m) for m in minima_params], 1)
+plt.plot(minima_flops, [10**(m*math.log10(x) + b) for x in minima_flops], label=f"y={m:.2f}x + {b:.2f}", linestyle="--")
+plt.legend()
+plt.ylabel("Number of Parameters")
+plt.xlabel("Number of Petaflops")
+plt.xscale("log")
+plt.yscale("log")
+plt.savefig("minima_params_vs_flops.png")
+plt.close("all")
+
+minima_tokens = [(f*1e15)/(6 * p) for f, p in zip(minima_flops, minima_params)]
+plt.scatter(minima_flops, minima_tokens)
+m, b = np.polyfit([math.log10(m) for m in minima_flops], [math.log10(m) for m in minima_tokens], 1)
+plt.plot(minima_flops, [10**(m*math.log10(x) + b) for x in minima_flops], label=f"y={m:.2f}x + {b:.2f}", linestyle="--")
+plt.legend()
+plt.ylabel("Number of Tokens")
+plt.xlabel("Number of Petaflops")
+plt.xscale("log")
+plt.yscale("log")
+plt.savefig("minima_tokens_vs_flops.png")
 plt.close("all")
