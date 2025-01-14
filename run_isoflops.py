@@ -7,6 +7,8 @@ import sys
 import threading
 import os
 
+NUM_CUDA_DEVICES = 1
+
 def count_params(d_model: int, n_heads: int, n_layers: int):
     model = SmallTransformer(vocab_size=174, d_model=d_model, n_heads=n_heads, num_layers=n_layers)
     return sum(p.numel() for p in model.parameters())
@@ -17,7 +19,7 @@ def flops_to_params_and_tokens(flops: int, param_count):
         return None
     return num_tokens
 
-MAX_CONCURRENT_PROCESSES = 4
+MAX_CONCURRENT_PROCESSES = 2
 semaphore = threading.Semaphore(MAX_CONCURRENT_PROCESSES)
 
 def run_subprocess(command, env):
@@ -45,18 +47,20 @@ def run_subprocess(command, env):
 flop_counts = [
     # 1e14, 
     # 3e14, 
-    # 6e14, 
+    6e14, 
     1e15, # 1 PFLOP
     3e15, 
-    # 6e15, 
-    # 1e16, 
-    # 3e16, 
+    6e15, 
+    1e16, 
+    3e16, 
 ]
 
 
 # d_model, n_heads, n_layers
 model_sizes = [ 
-    (64, 1, 1),
+    (48, 1, 1),
+    #
+    (64, 2, 1),
     (64, 2, 2),
     (64, 2, 3),
     #
@@ -67,10 +71,14 @@ model_sizes = [
     (256, 4, 4),
     (256, 4, 5),
     (256, 4, 6),
+    # 
+    (384, 6, 6),
+    (384, 6, 7),
+    (384, 6, 8),
     #
     (512, 8, 8),
-    (512, 8, 9),
-    (512, 8, 10),
+    # (512, 8, 9),
+    # (512, 8, 10),
 ]
 
 count = 0
@@ -83,12 +91,17 @@ for flop_count in flop_counts:
         if tokens is None:
             print(f"Skipping (tokens={tokens}) for flop_count={flop_count}, d_model={d_model}, n_heads={n_heads}, n_layers={n_layers}")
             continue
+        train_iters = tokens / (128 * 128)
+        print(f"train_iters={train_iters}")
+        if train_iters < 1000:
+            print(f"Skipping (train_iters={train_iters}) for flop_count={flop_count}, d_model={d_model}, n_heads={n_heads}, n_layers={n_layers}")
+            continue
         
         s = f"\tTokens: {tokens:.2e}"
         petaflops = flop_count / 1e15
         print(f"petaflops={petaflops} | params={params} (d_model={d_model}, n_heads={n_heads}, n_layers={n_layers}) | tokens={s}")
 
-        cuda_device = count % 4  # Adjust based on available CUDA devices
+        cuda_device = count % NUM_CUDA_DEVICES  # Adjust based on available CUDA devices
 
         # Prepare the environment variables
         env = os.environ.copy()
@@ -98,7 +111,7 @@ for flop_count in flop_counts:
         command = [
             sys.executable,  # Ensures the same Python interpreter is used
             "char_scaling_laws.py",
-            "--experiment_name", f"flops{petaflops}_d{d_model}_l{n_layers}_h{n_heads}_t{int(tokens)}",
+            "--experiment_name", f"flops{petaflops}_d{d_model}_l{n_layers}_h{n_heads}_tokens{int(tokens)}_params{params}",
             "--num_train_tokens", str(int(tokens)),
             "--n_layers", str(n_layers),
             "--d_model", str(d_model),

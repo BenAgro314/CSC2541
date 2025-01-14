@@ -29,7 +29,6 @@ def parse_tensorboard_log(event_file_path, tag, step_multiplier=1):
 
     # Retrieve scalar events for the specified tag
     scalar_events = ea.Scalars(tag)
-
     # Prepare data for JSON
     x = []
     y = []
