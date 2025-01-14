@@ -140,6 +140,6 @@ for flop_count in flop_counts:
         print("Executing command:", " ".join(command))
         
         # Launch the subprocess in a separate thread to avoid blocking
-        # threading.Thread(target=run_subprocess, args=(command, env)).start()
+        threading.Thread(target=run_subprocess, args=(command, env)).start()
         
         count += 1
