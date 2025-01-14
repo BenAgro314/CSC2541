@@ -19,7 +19,7 @@ def flops_to_params_and_tokens(flops: int, param_count):
         return None
     return num_tokens
 
-MAX_CONCURRENT_PROCESSES = 2
+MAX_CONCURRENT_PROCESSES = 4
 semaphore = threading.Semaphore(MAX_CONCURRENT_PROCESSES)
 
 def run_subprocess(command, env):
@@ -98,6 +98,8 @@ plt.savefig("params.png")
 plt.close("all")
 
 count = 0
+batch_size = 64
+seq_len = 128
 for flop_count in flop_counts:
     print("=" * 30)
     for d_model, n_heads, n_layers in model_sizes:
@@ -107,7 +109,7 @@ for flop_count in flop_counts:
         if tokens is None:
             print(f"Skipping (tokens={tokens}) for flop_count={flop_count}, d_model={d_model}, n_heads={n_heads}, n_layers={n_layers}")
             continue
-        train_iters = tokens / (128 * 128)
+        train_iters = tokens / (batch_size * seq_len)
         print(f"train_iters={train_iters}")
         if train_iters < 100:
             print(f"Skipping (train_iters={train_iters}) for flop_count={flop_count}, d_model={d_model}, n_heads={n_heads}, n_layers={n_layers}")
@@ -131,7 +133,9 @@ for flop_count in flop_counts:
             "--num_train_tokens", str(int(tokens)),
             "--n_layers", str(n_layers),
             "--d_model", str(d_model),
-            "--n_heads", str(n_heads)
+            "--n_heads", str(n_heads),
+            "--batch_size", str(batch_size),
+            "--seq_len", str(seq_len),
         ]
         print("Executing command:", " ".join(command))
         
