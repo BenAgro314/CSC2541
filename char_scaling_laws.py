@@ -7,14 +7,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Sampler
 
 from datasets import load_dataset
 
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-import json
-from torch.utils.data import Sampler
 import json
 
 class TokenLimitedSampler(Sampler):

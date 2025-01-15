@@ -1,7 +1,7 @@
 # Minchilla: A minima reproduction of the Chinchilla Scaling Laws
 
 In this repo we apply method 2 (iso-flop curves) from the Chinchilla Scaling Laws Paper
-("Training Compute-Optimal Large Language Models" by Hoffmann et a.)
+(["Training Compute-Optimal Large Language Models" by Hoffmann et a.](https://arxiv.org/pdf/2203.15556))
 to **very small transformers** on a **character-level lanugage modelling task**.
 
 In this setting, we find a similar result that parameters and training tokens should be scaled up in
