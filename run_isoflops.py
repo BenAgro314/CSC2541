@@ -47,11 +47,11 @@ flop_counts = [
     3e15, 
     6e15, 
     1e16, 
-    3e16, 
-    6e16, 
-    1e17, 
-    3e17, 
-    6e17, # 60 PetaFLOPs
+    3e16,  # 30 PetaFLOPs
+    # 6e16, 
+    # 1e17, 
+    # 3e17, # 30 PetaFLOPs
+    # 6e17, # 60 PetaFLOPs
 ]
 
 
