@@ -33,7 +33,7 @@ log_dirs = glob.glob("outputs/*")
 flops_to_curve = {}
 
 for log_dir in log_dirs:
-    print(f"Processing {log_dir}")
+    # print(f"Processing {log_dir}")
     with open(os.path.join(log_dir, "args.json")) as f:
         args = json.load(f)
         seq_len = args["seq_len"]
@@ -50,10 +50,16 @@ for log_dir in log_dirs:
         continue
     final_loss = data["Loss/Train_iter_smoothed"][-1]["value"]
     num_iters = data["Loss/Train_iter_smoothed"][-1]["step"]
-    print(num_iters)
     params = data["Model/Total Parameters"][-1]["value"]
-    if num_iters < 50:
-        continue
+    # if num_iters < 500:
+    #     continue
+    # outliers
+    # if "flops3.0_d640_l10_h10" in log_dir.split("/")[-1]:
+    #     continue
+    # if "flops6.0_d704_l11_h11" in log_dir.split("/")[-1]:
+    #     continue
+    # if "flops10.0_d704_l11_h11" in log_dir.split("/")[-1]:
+        # continue
     # assert len(tensorboard_files) == 1
     # try:
     #     params = parse_tensorboard_log(tensorboard_files[0], "Model/Total Parameters")[0].value
@@ -67,8 +73,10 @@ for log_dir in log_dirs:
     name = log_dir.split("/")[1]
     if params < 2e6:
         continue
+    if final_loss > 2:
+        continue
 
-    print(f"params={params}, final_loss={final_loss}, num_pflops={num_peta_flops}")
+    print(f"logdir={log_dir}, final_loss={final_loss}, iters={num_iters}")
 
     # if "d128_l2_h2" in log_dir:
     #     continue
@@ -76,25 +84,29 @@ for log_dir in log_dirs:
     if num_peta_flops not in flops_to_curve:
         flops_to_curve[num_peta_flops] = []
     flops_to_curve[num_peta_flops].append((params, final_loss, name))
+
 with open("flops_to_curve.json", "w") as f:
     json.dump(flops_to_curve, f)
-
 
 min_params = min([v[0] for g in flops_to_curve.values() for v in g])
 max_params = max([v[0] for g in flops_to_curve.values() for v in g])
 min_flops = min(flops_to_curve.keys())
 max_flops = max(flops_to_curve.keys())
 
-cmap = plt.get_cmap("turbo")
+# cmap = plt.get_cmap("turbo")
+cmap = plt.get_cmap("rainbow")
 
+for k,v in flops_to_curve.items():
+    flops_to_curve[k] = sorted(flops_to_curve[k], key=lambda x: x[0])
 flops_to_curve_items = sorted(flops_to_curve.items(), key=lambda x: x[0])
 
 minima_params = []
 minima_flops = []
 
 for num_flops, data in flops_to_curve_items: #flops_to_curve.items():
-    # if num_flops >= 6:
-    #     continue
+    # data = data[:-1] # chop last point outlier
+    if num_flops >= 60:
+        continue
     new_data = []
     for datum in data:
         name = datum[-1]
@@ -115,7 +127,7 @@ for num_flops, data in flops_to_curve_items: #flops_to_curve.items():
     # Convert the fitted x values back to original scale for plotting
     xs_fit = [10**x for x in xs_fit_log]
 
-    log_normalized_flops = (math.log(num_flops) - math.log(min_flops)) / (math.log(max_flops) - math.log(min_flops))
+    log_normalized_flops = (math.log(num_flops) - math.log(min_flops)) / (math.log(max_flops) - math.log(min_flops) + 1e-5)
     color = cmap(log_normalized_flops)
 
     # Plot the fitted parabola
@@ -130,8 +142,8 @@ for num_flops, data in flops_to_curve_items: #flops_to_curve.items():
     # plot minima
     minima = 10**(-coeffs[1] / (2 * coeffs[0]))
     y_val = poly(math.log10(minima))
-    plt.scatter([minima], [y_val], color=color, marker="x")
-    print(f"pflops={num_flops} minima params={minima}, loss value={y_val}")
+    # plt.scatter([minima], [y_val], color=color, marker="x")
+    # print(f"pflops={num_flops} minima params={minima}, loss value={y_val}")
 
     minima_params.append(minima)
     minima_flops.append(num_flops)
