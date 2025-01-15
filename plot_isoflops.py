@@ -59,98 +59,68 @@ flops_to_curve_items = sorted(flops_to_curve.items(), key=lambda x: x[0])
 minima_params = []
 minima_flops = []
 
-for num_flops, data in flops_to_curve_items:  # flops_to_curve.items():
-    # Skip high flop counts
+for num_flops, data in flops_to_curve_items:
+    # Skip high flop counts, these are not trained
     print(data)
     if num_flops >= 60:
         continue
 
-    # Clean data if necessary (e.g., remove specific outliers manually)
-    new_data = []
-    for datum in data:
-        name = datum[-1]  # Assuming the last element is a name or identifier
-        new_data.append(datum)
-    data = new_data
+    xs_log = np.array([math.log10(x[0]) for x in data])
+    ys = np.array([x[1] for x in data])
 
-    # Extract x and y values
-    xs_log = np.array([math.log10(x[0]) for x in data])  # log10 of x-values
-    ys = np.array([x[1] for x in data])                # y-values
-
-    # Reshape for sklearn
     X = xs_log.reshape(-1, 1)
     y = ys
-
-    # Create a pipeline with PolynomialFeatures and RANSACRegressor
+    # polynomial fitting
     polynomial_degree = 2
     ransac = make_pipeline(
         PolynomialFeatures(degree=polynomial_degree, include_bias=True),
         RANSACRegressor(random_state=42)
     )
-
     # Fit the model
     ransac.fit(X, y)
-
     # Access the RANSAC regressor step to get the inlier mask
     ransac_regressor = ransac.named_steps['ransacregressor']
     inlier_mask = ransac_regressor.inlier_mask_
-    outlier_mask = ~inlier_mask
-
-    # Separate inliers and outliers
     X_inliers = X[inlier_mask]
     y_inliers = y[inlier_mask]
-    X_outliers = X[outlier_mask]
-    y_outliers = y[outlier_mask]
-
-    # Extract coefficients from the fitted model
-    # Since PolynomialFeatures with include_bias=True, coefficients are [c, b, a]
     poly_features = ransac.named_steps['polynomialfeatures']
     coeffs = ransac_regressor.estimator_.coef_
     intercept = ransac_regressor.estimator_.intercept_
 
-    # Reconstruct polynomial coefficients in descending order for np.poly1d
-    # [a, b, c] corresponds to a*x^2 + b*x + c
     a = coeffs[2] if len(coeffs) > 2 else 0
     b = coeffs[1] if len(coeffs) > 1 else 0
     c = intercept
 
-    # Create a polynomial function
     poly = np.poly1d([a, b, c])
 
-    # Generate x values for the fitted curve (smooth curve)
     xs_fit_log = np.linspace(min(xs_log), max(xs_log), 100)
     ys_fit = poly(xs_fit_log)
 
-    # Convert the fitted x values back to original scale for plotting
     xs_fit = 10**xs_fit_log
 
-    # Normalize flop counts for coloring
     log_normalized_flops = (math.log(num_flops) - math.log(min_flops)) / (
         math.log(max_flops) - math.log(min_flops) + 1e-5
     )
     color = cmap(log_normalized_flops)
 
-    # Plot inliers
     plt.scatter(
         10**X_inliers.flatten(),
         y_inliers,
-        label=f"pflops={num_flops}",
+        label=f"PetaFLOPs={num_flops}",
         color=color,
         marker='o',
-        # edgecolor='k',
         alpha=0.7
     )
 
-    # Plot the fitted polynomial curve
-    plt.plot(xs_fit, ys_fit, color=color, linewidth=2) # , label=f"Fit pflops={num_flops}")
+    plt.plot(xs_fit, ys_fit, color=color, linewidth=2)
 
-    # Calculate and store the minima if the quadratic coefficient is non-zero
     if a != 0:
         minima_log = -b / (2 * a)
         minima = 10**minima_log
         y_val = poly(minima_log)
 
         # Plot minima
-        plt.scatter([minima], [y_val], color=color, marker="x", s=100) # , label=f"Minima pflops={num_flops}")
+        plt.scatter([minima], [y_val], color=color, marker="x", s=100)
 
         minima_params.append(minima)
         minima_flops.append(num_flops)
@@ -168,7 +138,6 @@ plt.savefig("flops_to_curve.png")
 plt.close("all")
 
 plt.scatter(minima_flops, minima_params)
-# linear best fit
 m, b = np.polyfit([math.log10(m) for m in minima_flops], [math.log10(m) for m in minima_params], 1)
 plt.plot(minima_flops, [10**(m*math.log10(x) + b) for x in minima_flops], label=f"y={m:.2f}x + {b:.2f}", linestyle="--")
 plt.legend()
