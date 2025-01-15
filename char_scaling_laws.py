@@ -2,17 +2,15 @@ import math
 import time
 import os
 import argparse
-import csv  # New import for CSV operations
+import csv 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 
-# Hugging Face Datasets
 from datasets import load_dataset
 
-# Additional imports for enhancements
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import json
@@ -30,9 +28,6 @@ class TokenLimitedSampler(Sampler):
     def __len__(self):
         return self.num_tokens
 
-###############################################################################
-# 1. Character-Level Dataset and Vocab
-###############################################################################
 
 class CharacterDataset(Dataset):
     """
@@ -80,9 +75,6 @@ def build_char_vocab(texts):
     idx2char = {i: ch for ch, i in char2idx.items()}
     return char2idx, idx2char
 
-###############################################################################
-# 2. Positional Encoding
-###############################################################################
 
 class PositionalEncoding(nn.Module):
     """
@@ -106,9 +98,6 @@ class PositionalEncoding(nn.Module):
         seq_len = x.size(1)
         return x + self.pe[:, :seq_len, :].to(x.device)
 
-###############################################################################
-# 3. Small Transformer with Causal Mask
-###############################################################################
 
 class SmallTransformer(nn.Module):
     def __init__(
@@ -222,9 +211,6 @@ class SmallTransformer(nn.Module):
             raise ValueError("No idx2char mapping found. Provide idx2char to the model for decoding.")
         return "".join([self.idx2char[int(i)] for i in ids])
 
-###############################################################################
-# 4. Training & Evaluation
-###############################################################################
 
 def gaussian_kernel(size=10, sigma=2.0):
     """
@@ -445,14 +431,7 @@ def evaluate(model, dataloader, criterion, device, writer, epoch):
     writer.add_scalar("Loss/Val_Epoch", epoch_loss, epoch)
     return epoch_loss
 
-###############################################################################
-# 5. Main Script
-###############################################################################
-
 def main():
-    # ---------------------------
-    # 1. Parse Command-Line Arguments
-    # ---------------------------
     parser = argparse.ArgumentParser(description="Train a Small Transformer on TinyStories (char-level) with TensorBoard Logging")
 
     current_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
@@ -489,65 +468,40 @@ def main():
 
     log_dict = {}
 
-    # ---------------------------
-    # 2. Setup Output Directories
-    # ---------------------------
     log_dir = os.path.join(args.output_dir, args.experiment_name, 'logs')
     checkpoint_dir = os.path.join(args.output_dir, args.experiment_name, 'checkpoints')
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    # ---------------------------
-    # 2.1 Log Arguments to JSON
-    # ---------------------------
     args_dict = vars(args)
     args_json_path = os.path.join(args.output_dir, args.experiment_name, 'args.json')
     with open(args_json_path, 'w') as f:
         json.dump(args_dict, f, indent=4)
     print(f"Saved arguments to {args_json_path}")
 
-    # ---------------------------
-    # 3. Initialize TensorBoard
-    # ---------------------------
     writer = SummaryWriter(log_dir=log_dir)
 
-    # ---------------------------
-    # 4. Device Configuration
-    # ---------------------------
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {DEVICE}")
 
-    # ---------------------------
-    # 5. Load TinyStories Data
-    # ---------------------------
-    # TinyStories has 'train' and 'validation' splits
     train_data = load_dataset("roneneldan/TinyStories", split="train")
     valid_data = load_dataset("roneneldan/TinyStories", split="validation")
 
-    # Each item is typically {'text': 'A short story...'}.
-    # Collect them into lists of strings.
     train_texts = [item['text'] for item in train_data]
     valid_texts = [item['text'] for item in valid_data]
     print("Loaded training and validation data!")
 
-    # Build vocabulary over all data (train + valid).
-    # Or you can build only on train_texts if you want.
     char2idx, idx2char = build_char_vocab(train_texts + valid_texts)
     print(f"Built vocabulary with {len(char2idx)} characters.")
 
-    # Flatten into a single text string (with newline separators) for each split
     train_text = "\n".join(train_texts)
     valid_text = "\n".join(valid_texts)
 
-    # 2.1 Print and log total characters in training set
     num_train_chars = len(train_text)
     print(f"Number of chars in training set: {num_train_chars}")
     writer.add_scalar("Data/Number of Training Chars", num_train_chars, 0)
     add_to_log_dict(log_dict, "Data/Number of Training Chars", num_train_chars, 0)
 
-    # ---------------------------
-    # 6. Create Dataset & DataLoaders
-    # ---------------------------
     train_dataset = CharacterDataset(train_text, seq_len=args.seq_len, char2idx=char2idx)
     val_dataset = CharacterDataset(valid_text, seq_len=args.seq_len, char2idx=char2idx)
 
@@ -569,9 +523,6 @@ def main():
         pin_memory=(DEVICE == "cuda")
     )
 
-    # ---------------------------
-    # 7. Initialize Model
-    # ---------------------------
     vocab_size = len(char2idx)
     model = SmallTransformer(
         vocab_size=vocab_size,
@@ -592,12 +543,8 @@ def main():
 
     add_to_log_dict(log_dict, "Model/Total Parameters", total_params, 0)
 
-    # ---------------------------
-    # 8. Loss, Optimizer, Scheduler
-    # ---------------------------
     criterion = nn.CrossEntropyLoss()
     
-    # Using AdamW optimizer as it's commonly used with Transformer models
     optimizer = optim.AdamW(
         model.parameters(),
         lr=args.lr,
@@ -616,9 +563,6 @@ def main():
     print(f"Estimated Petaflops: {6 * total_params * num_training_tokens / 1e15}")
 
 
-    # ---------------------------
-    # 9. Training Loop
-    # ---------------------------
     for epoch in range(args.epochs):
         start_time = time.time()
         train_loss = train_one_epoch(
@@ -662,9 +606,6 @@ def main():
                 f"| Epoch Time: {epoch_duration:.2f}s | ETA: {eta/60:.2f}m"
             )
 
-    # ---------------------------
-    # 10. Close Writer
-    # ---------------------------
     writer.close()
 
 if __name__ == "__main__":
