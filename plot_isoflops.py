@@ -1,5 +1,4 @@
 
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 import glob
 import json
 import os
