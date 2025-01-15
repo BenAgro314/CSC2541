@@ -1,4 +1,4 @@
-# Minchilla: A minima reproduction of the Chinchilla Scaling Laws
+# MinChilla: A minima reproduction of the Chinchilla Scaling Laws
 
 **Google Colab**: https://colab.research.google.com/drive/1NLta5gGVdZNq4N8vDG_l9_K8tVBDhrj6?authuser=1#scrollTo=jTkztyGtaev8
 
