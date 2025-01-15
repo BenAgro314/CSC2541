@@ -82,7 +82,7 @@ flop_counts = [
 # ]
 
 model_sizes = [
-    (d, max(1, d//64), max(d//64, 2)) for d in range(320, 64 * 17, 64)
+    (d, max(1, d//64), max(d//64, 2)) for d in range(256, 64 * 17, 64)
 ]
 print("Model sizes:")
 import matplotlib.pyplot as plt
