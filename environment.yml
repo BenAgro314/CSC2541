@@ -1,4 +1,4 @@
-name: CSC2541
+name: minchilla
 channels:
   - conda-forge
   - defaults

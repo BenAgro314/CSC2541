@@ -8,6 +8,7 @@ import threading
 import os
 
 NUM_CUDA_DEVICES = 2
+MAX_CONCURRENT_PROCESSES = 2
 
 def count_params(d_model: int, n_heads: int, n_layers: int):
     model = SmallTransformer(vocab_size=174, d_model=d_model, n_heads=n_heads, num_layers=n_layers)
@@ -19,7 +20,6 @@ def flops_to_params_and_tokens(flops: int, param_count):
         return None
     return num_tokens
 
-MAX_CONCURRENT_PROCESSES = 2
 semaphore = threading.Semaphore(MAX_CONCURRENT_PROCESSES)
 
 def run_subprocess(command, env):
