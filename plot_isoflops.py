@@ -65,11 +65,6 @@ minima_params = []
 minima_flops = []
 
 for num_flops, data in flops_to_curve_items:
-    # Skip high flop counts, these are not trained
-    print(data)
-    # if num_flops >= 60:
-    #     continue
-
     xs_log = np.array([math.log10(x[0]) for x in data])
     ys = np.array([x[1] for x in data])
 
