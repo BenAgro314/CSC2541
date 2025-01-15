@@ -12,8 +12,7 @@ from sklearn.pipeline import make_pipeline
 import sys
 
 
-load_data = sys.argv[0]
-
+load_data = sys.argv[1]
 if len(sys.argv) > 1 and load_data == "True":
     log_dirs = glob.glob("outputs/*")
     flops_to_curve = {}
@@ -68,8 +67,8 @@ minima_flops = []
 for num_flops, data in flops_to_curve_items:
     # Skip high flop counts, these are not trained
     print(data)
-    if num_flops >= 60:
-        continue
+    # if num_flops >= 60:
+    #     continue
 
     xs_log = np.array([math.log10(x[0]) for x in data])
     ys = np.array([x[1] for x in data])
