@@ -11,7 +11,10 @@ from sklearn.linear_model import RANSACRegressor
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.pipeline import make_pipeline
 
-# READ = False # True # True
+
+# try training with higher LR / lower batch size:
+#flops10.0_d640_l10_h10
+#flops6.0_d640_l10_h10
 
 def parse_tensorboard_log(event_file_path, tag):
     if not os.path.isfile(event_file_path):
@@ -54,35 +57,13 @@ for log_dir in log_dirs:
     final_loss = data["Loss/Train_iter_smoothed"][-1]["value"]
     num_iters = data["Loss/Train_iter_smoothed"][-1]["step"]
     params = data["Model/Total Parameters"][-1]["value"]
-    # if num_iters < 500:
-    #     continue
-    # outliers
-    # if "flops3.0_d640_l10_h10" in log_dir.split("/")[-1]:
-    #     continue
-    # if "flops6.0_d704_l11_h11" in log_dir.split("/")[-1]:
-    #     continue
-    # if "flops10.0_d704_l11_h11" in log_dir.split("/")[-1]:
-        # continue
-    # assert len(tensorboard_files) == 1
-    # try:
-    #     params = parse_tensorboard_log(tensorboard_files[0], "Model/Total Parameters")[0].value
-    #     data = parse_tensorboard_log(tensorboard_files[0], "Loss/Train_iter_smoothed")
-    # except Exception as e:
-    #     continue
-    # num_iters = data[-1].step
-    # final_loss = data[-1].value
-    #num_flops = num_iters * batch_size * seq_len * params * 6
     num_peta_flops = float(log_dir.split("/")[1].split("_")[0][5:])
     name = log_dir.split("/")[1]
-    if params < 2e6:
-        continue
     if final_loss > 2:
         continue
 
     print(f"logdir={log_dir}, final_loss={final_loss}, iters={num_iters}")
 
-    # if "d128_l2_h2" in log_dir:
-    #     continue
 
     if num_peta_flops not in flops_to_curve:
         flops_to_curve[num_peta_flops] = []
@@ -96,7 +77,6 @@ max_params = max([v[0] for g in flops_to_curve.values() for v in g])
 min_flops = min(flops_to_curve.keys())
 max_flops = max(flops_to_curve.keys())
 
-# cmap = plt.get_cmap("turbo")
 cmap = plt.get_cmap("rainbow")
 
 for k,v in flops_to_curve.items():
@@ -107,46 +87,55 @@ minima_params = []
 minima_flops = []
 
 for num_flops, data in flops_to_curve_items:  # flops_to_curve.items():
-    # Filter out high flop counts
+    # Skip high flop counts
+    print(data)
     if num_flops >= 60:
         continue
 
     # Clean data if necessary (e.g., remove specific outliers manually)
     new_data = []
     for datum in data:
-        name = datum[-1]
+        name = datum[-1]  # Assuming the last element is a name or identifier
         new_data.append(datum)
     data = new_data
 
     # Extract x and y values
-    xs_log = [math.log10(x[0]) for x in data]  # log10 of x-values
-    ys = [x[1] for x in data]                # y-values
+    xs_log = np.array([math.log10(x[0]) for x in data])  # log10 of x-values
+    ys = np.array([x[1] for x in data])                # y-values
 
-    # Convert to numpy arrays and reshape for sklearn
-    X = np.array(xs_log).reshape(-1, 1)
-    y = np.array(ys)
+    # Reshape for sklearn
+    X = xs_log.reshape(-1, 1)
+    y = ys
 
-    # Create a pipeline that first transforms the data to polynomial features,
-    # then applies RANSAC for robust regression
+    # Create a pipeline with PolynomialFeatures and RANSACRegressor
     polynomial_degree = 2
     ransac = make_pipeline(
-        PolynomialFeatures(degree=polynomial_degree),
+        PolynomialFeatures(degree=polynomial_degree, include_bias=True),
         RANSACRegressor(random_state=42)
     )
 
     # Fit the model
     ransac.fit(X, y)
 
+    # Access the RANSAC regressor step to get the inlier mask
+    ransac_regressor = ransac.named_steps['ransacregressor']
+    inlier_mask = ransac_regressor.inlier_mask_
+    outlier_mask = ~inlier_mask
+
+    # Separate inliers and outliers
+    X_inliers = X[inlier_mask]
+    y_inliers = y[inlier_mask]
+    X_outliers = X[outlier_mask]
+    y_outliers = y[outlier_mask]
+
     # Extract coefficients from the fitted model
-    # The coefficients are in the order [c, b, a] for a*x^2 + b*x + c
-    # because PolynomialFeatures includes the bias term first
-    model = ransac.named_steps['ransacregressor']
+    # Since PolynomialFeatures with include_bias=True, coefficients are [c, b, a]
     poly_features = ransac.named_steps['polynomialfeatures']
-    coeffs = model.estimator_.coef_
-    intercept = model.estimator_.intercept_
-    # Reconstruct full coefficients including intercept
-    # PolynomialFeatures with degree=2: [1, x, x^2]
-    # So coeffs[0] is for x, coeffs[1] is for x^2
+    coeffs = ransac_regressor.estimator_.coef_
+    intercept = ransac_regressor.estimator_.intercept_
+
+    # Reconstruct polynomial coefficients in descending order for np.poly1d
+    # [a, b, c] corresponds to a*x^2 + b*x + c
     a = coeffs[2] if len(coeffs) > 2 else 0
     b = coeffs[1] if len(coeffs) > 1 else 0
     c = intercept
@@ -159,7 +148,7 @@ for num_flops, data in flops_to_curve_items:  # flops_to_curve.items():
     ys_fit = poly(xs_fit_log)
 
     # Convert the fitted x values back to original scale for plotting
-    xs_fit = [10**x for x in xs_fit_log]
+    xs_fit = 10**xs_fit_log
 
     # Normalize flop counts for coloring
     log_normalized_flops = (math.log(num_flops) - math.log(min_flops)) / (
@@ -167,44 +156,42 @@ for num_flops, data in flops_to_curve_items:  # flops_to_curve.items():
     )
     color = cmap(log_normalized_flops)
 
-    # Plot the data points
+    # Plot inliers
     plt.scatter(
-        [x[0] for x in data],
-        [x[1] for x in data],
+        10**X_inliers.flatten(),
+        y_inliers,
         label=f"pflops={num_flops}",
-        color=color
+        color=color,
+        marker='o',
+        # edgecolor='k',
+        alpha=0.7
     )
 
-    # Generate a larger range for the fitted curve if needed
-    xs_fit_large_log = np.linspace(math.log10(min_params), math.log10(max_params), 100)
-    ys_fit_large = poly(xs_fit_large_log)
-    xs_fit_large = [10**x for x in xs_fit_large_log]
+    # Plot the fitted polynomial curve
+    plt.plot(xs_fit, ys_fit, color=color, linewidth=2) # , label=f"Fit pflops={num_flops}")
 
-    # Plot the fitted curves
-    plt.plot(xs_fit_large, ys_fit_large, linestyle="--", color=color)
-    plt.plot(xs_fit, ys_fit, color=color)
-
-    # Calculate and plot the minima
+    # Calculate and store the minima if the quadratic coefficient is non-zero
     if a != 0:
         minima_log = -b / (2 * a)
         minima = 10**minima_log
         y_val = poly(minima_log)
-        # Uncomment the following lines to plot minima
-        plt.scatter([minima], [y_val], color=color, marker="x")
-        # print(f"pflops={num_flops} minima params={minima}, loss value={y_val}")
+
+        # Plot minima
+        plt.scatter([minima], [y_val], color=color, marker="x", s=100) # , label=f"Minima pflops={num_flops}")
 
         minima_params.append(minima)
         minima_flops.append(num_flops)
     else:
         print(f"pflops={num_flops}: Quadratic coefficient is zero, cannot compute minima.")
 
+
 plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.10),
           ncol=3, fancybox=True, shadow=True)
 # plt.yscale("log")
 plt.xscale("log")
-plt.savefig("flops_to_curve.png")
 plt.xlabel("Number of Parameters")
 plt.ylabel("Training Loss")
+plt.savefig("flops_to_curve.png")
 plt.close("all")
 
 plt.scatter(minima_flops, minima_params)
@@ -231,8 +218,6 @@ plt.yscale("log")
 plt.savefig("minima_tokens_vs_flops.png")
 plt.close("all")
 
-print(minima_params)
-print(minima_tokens)
 plt.scatter(minima_params, minima_tokens)
 m, b = np.polyfit([math.log10(m) for m in minima_params], [math.log10(m) for m in minima_tokens], 1)
 plt.plot(minima_params, [10**(m*math.log10(x) + b) for x in minima_params], label=f"y={m:.2f}x + {b:.2f}", linestyle="--")
