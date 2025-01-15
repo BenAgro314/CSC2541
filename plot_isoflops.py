@@ -11,44 +11,38 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.pipeline import make_pipeline
 import sys
 
+assert len(sys.argv) == 2, "Must specify output dir"
+out_dir = sys.argv[1]
 
-load_data = sys.argv[1]
-if len(sys.argv) > 1 and load_data == "True":
-    log_dirs = glob.glob("outputs/*")
-    flops_to_curve = {}
+log_dirs = glob.glob(os.path.join(out_dir, "*"))
+flops_to_curve = {}
 
-    for log_dir in log_dirs:
-        with open(os.path.join(log_dir, "args.json")) as f:
-            args = json.load(f)
-            seq_len = args["seq_len"]
-            batch_size = args["batch_size"]
-        json_files = glob.glob(os.path.join(log_dir, "logs/*.json"))
-        if len(json_files) == 0:
-            continue
-        assert len(json_files) == 1, f"{len(json_files)}"
-        try:
-            with open(json_files[0], "r") as f:
-                data = json.load(f)
-        except Exception as e:
-            print(f"warning: failed to read {log_dir}")
-            continue
-        final_loss = data["Loss/Train_iter_smoothed"][-1]["value"]
-        num_iters = data["Loss/Train_iter_smoothed"][-1]["step"]
-        params = data["Model/Total Parameters"][-1]["value"]
-        num_peta_flops = float(log_dir.split("/")[1].split("_")[0][5:])
-        name = log_dir.split("/")[1]
-        # outlier rejection based on loss value. Some very short runs do not converge
-        if final_loss > 2:
-            continue
-        if num_peta_flops not in flops_to_curve:
-            flops_to_curve[num_peta_flops] = []
-        flops_to_curve[num_peta_flops].append((params, final_loss, name))
-
-    with open("resources/flops_to_curve.json", "w") as f:
-        json.dump(flops_to_curve, f)
-else:
-    with open("resources/flops_to_curve.json", "r") as f:
-        flops_to_curve = {float(k): v for k,v in json.load(f).items()}
+for log_dir in log_dirs:
+    with open(os.path.join(log_dir, "args.json")) as f:
+        args = json.load(f)
+        seq_len = args["seq_len"]
+        batch_size = args["batch_size"]
+    json_files = glob.glob(os.path.join(log_dir, "logs/*.json"))
+    if len(json_files) == 0:
+        continue
+    assert len(json_files) == 1, f"{len(json_files)}"
+    try:
+        with open(json_files[0], "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"warning: failed to read {log_dir}")
+        continue
+    final_loss = data["Loss/Train_iter_smoothed"][-1]["value"]
+    num_iters = data["Loss/Train_iter_smoothed"][-1]["step"]
+    params = data["Model/Total Parameters"][-1]["value"]
+    num_peta_flops = float(log_dir.split("/")[1].split("_")[0][5:])
+    name = log_dir.split("/")[1]
+    # outlier rejection based on loss value. Some very short runs do not converge
+    if final_loss > 2:
+        continue
+    if num_peta_flops not in flops_to_curve:
+        flops_to_curve[num_peta_flops] = []
+    flops_to_curve[num_peta_flops].append((params, final_loss, name))
 
 min_params = min([v[0] for g in flops_to_curve.values() for v in g])
 max_params = max([v[0] for g in flops_to_curve.values() for v in g])

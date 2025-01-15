@@ -27,14 +27,13 @@ Change `NUM_CUDA_DEVICES` and `MAX_CONCURRENT_PROCESSES` in `run_isoflops.py`.
 Then run `python run_isoflops.py`
 
 These trainings may take a while, depending on your machine. It took around 12 hours for us on 2 A5000's.
-Alternatively, we have pre-saved the relevant results to `resources/flops_to_curve.json`.
-We also saved raw training results in `saved_outputs/` if you are interested. (TODO)
+Alternatively, we have run these trainings and saved the outputs in `saved_outputs/`
+(including full tensorboard logs).
 
-## Estiamte scaling laws
+## Estimate scaling laws
 
-Run `plot_isoflops.py True`, which will produce the visualizations in `resources/`
-If you didn't run the above training and instead want to re-use the results in `flops_to_curve.json`,
-then run `plot_isoflops.py False`
+Run `plot_isoflops.py saved_outputs/`, which will produce the visualizations in `resources/`
+If you saved the results somewhere else, you can do `plot_isoflops.py <your-output-dir>`.
 
 ![Tokens vs flops](resources/minima_tokens_vs_flops.png)
 ![Params vs flops](resources/minima_params_vs_flops.png)
