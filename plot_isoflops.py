@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 import math
 import numpy as np
 import json
+from sklearn.linear_model import RANSACRegressor
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.pipeline import make_pipeline
 
 # READ = False # True # True
 
@@ -103,22 +106,53 @@ flops_to_curve_items = sorted(flops_to_curve.items(), key=lambda x: x[0])
 minima_params = []
 minima_flops = []
 
-for num_flops, data in flops_to_curve_items: #flops_to_curve.items():
-    # data = data[:-1] # chop last point outlier
+for num_flops, data in flops_to_curve_items:  # flops_to_curve.items():
+    # Filter out high flop counts
     if num_flops >= 60:
         continue
+
+    # Clean data if necessary (e.g., remove specific outliers manually)
     new_data = []
     for datum in data:
         name = datum[-1]
         new_data.append(datum)
     data = new_data
-    xs_log = [math.log10(x[0]) for x in data]  # log10 of x-values
-    ys = [x[1] for x in data]                  # y-values
 
-    # Fit a parabola (quadratic polynomial) to the data
-    # coeffs will contain [a, b, c] for the polynomial a*x^2 + b*x + c
-    coeffs = np.polyfit(xs_log, ys, deg=2)
-    poly = np.poly1d(coeffs)
+    # Extract x and y values
+    xs_log = [math.log10(x[0]) for x in data]  # log10 of x-values
+    ys = [x[1] for x in data]                # y-values
+
+    # Convert to numpy arrays and reshape for sklearn
+    X = np.array(xs_log).reshape(-1, 1)
+    y = np.array(ys)
+
+    # Create a pipeline that first transforms the data to polynomial features,
+    # then applies RANSAC for robust regression
+    polynomial_degree = 2
+    ransac = make_pipeline(
+        PolynomialFeatures(degree=polynomial_degree),
+        RANSACRegressor(random_state=42)
+    )
+
+    # Fit the model
+    ransac.fit(X, y)
+
+    # Extract coefficients from the fitted model
+    # The coefficients are in the order [c, b, a] for a*x^2 + b*x + c
+    # because PolynomialFeatures includes the bias term first
+    model = ransac.named_steps['ransacregressor']
+    poly_features = ransac.named_steps['polynomialfeatures']
+    coeffs = model.estimator_.coef_
+    intercept = model.estimator_.intercept_
+    # Reconstruct full coefficients including intercept
+    # PolynomialFeatures with degree=2: [1, x, x^2]
+    # So coeffs[0] is for x, coeffs[1] is for x^2
+    a = coeffs[2] if len(coeffs) > 2 else 0
+    b = coeffs[1] if len(coeffs) > 1 else 0
+    c = intercept
+
+    # Create a polynomial function
+    poly = np.poly1d([a, b, c])
 
     # Generate x values for the fitted curve (smooth curve)
     xs_fit_log = np.linspace(min(xs_log), max(xs_log), 100)
@@ -127,27 +161,42 @@ for num_flops, data in flops_to_curve_items: #flops_to_curve.items():
     # Convert the fitted x values back to original scale for plotting
     xs_fit = [10**x for x in xs_fit_log]
 
-    log_normalized_flops = (math.log(num_flops) - math.log(min_flops)) / (math.log(max_flops) - math.log(min_flops) + 1e-5)
+    # Normalize flop counts for coloring
+    log_normalized_flops = (math.log(num_flops) - math.log(min_flops)) / (
+        math.log(max_flops) - math.log(min_flops) + 1e-5
+    )
     color = cmap(log_normalized_flops)
 
-    # Plot the fitted parabola
-    p = plt.scatter([x[0] for x in data], [x[1] for x in data], label=f"pflops={num_flops}", color=color)
+    # Plot the data points
+    plt.scatter(
+        [x[0] for x in data],
+        [x[1] for x in data],
+        label=f"pflops={num_flops}",
+        color=color
+    )
 
-    xs_fit_large = np.linspace(math.log10(min_params), math.log10(max_params), 100)
-    ys_fit_large = poly(xs_fit_large)
-    xs_fit_large = [10**x for x in xs_fit_large]
+    # Generate a larger range for the fitted curve if needed
+    xs_fit_large_log = np.linspace(math.log10(min_params), math.log10(max_params), 100)
+    ys_fit_large = poly(xs_fit_large_log)
+    xs_fit_large = [10**x for x in xs_fit_large_log]
+
+    # Plot the fitted curves
     plt.plot(xs_fit_large, ys_fit_large, linestyle="--", color=color)
     plt.plot(xs_fit, ys_fit, color=color)
 
-    # plot minima
-    minima = 10**(-coeffs[1] / (2 * coeffs[0]))
-    y_val = poly(math.log10(minima))
-    # plt.scatter([minima], [y_val], color=color, marker="x")
-    # print(f"pflops={num_flops} minima params={minima}, loss value={y_val}")
+    # Calculate and plot the minima
+    if a != 0:
+        minima_log = -b / (2 * a)
+        minima = 10**minima_log
+        y_val = poly(minima_log)
+        # Uncomment the following lines to plot minima
+        plt.scatter([minima], [y_val], color=color, marker="x")
+        # print(f"pflops={num_flops} minima params={minima}, loss value={y_val}")
 
-    minima_params.append(minima)
-    minima_flops.append(num_flops)
-
+        minima_params.append(minima)
+        minima_flops.append(num_flops)
+    else:
+        print(f"pflops={num_flops}: Quadratic coefficient is zero, cannot compute minima.")
 
 plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.10),
           ncol=3, fancybox=True, shadow=True)
