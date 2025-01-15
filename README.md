@@ -8,7 +8,7 @@ In this setting, we find a similar result that parameters and training tokens sh
 roughly equal proportions.
 
 $$N_{opt} \propto C^{0.48}, \quad D_{opt} \propto C^{0.52}$$
-where $D$ is the number of training tokens and $N$ is the number of model parameters.
+where $D$ is the number of training tokens, $N$ is the number of model parameters, and $C$ is the number of FLOPs available for training.
 
 ![IsoFlop curve](resources/isoflop_curve.png)
 
