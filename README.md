@@ -32,14 +32,15 @@ These trainings may take a while, depending on your machine. It took around 12 h
 Alternatively, we have run these trainings and saved the outputs in `saved_outputs/`
 (including full tensorboard logs).
 
+![All training runs](resources/training_runs.png)
+
+
 ## Estimate scaling laws
 
 Run `plot_isoflops.py saved_outputs/`, which will produce the visualizations in `resources/`
 If you saved the results somewhere else, you can do `plot_isoflops.py <your-output-dir>`.
 
-![Tokens vs flops](resources/minima_tokens_vs_flops.png)
-![Params vs flops](resources/minima_params_vs_flops.png)
-![Tokens vs params](resources/minima_tokens_vs_params.png)
+![Scaling laws](resources/scaling_laws.png)
 
 From the above, we can see the scaling laws are roughly equal to those from Method 2 in the paper:
 
