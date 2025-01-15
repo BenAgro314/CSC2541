@@ -15,7 +15,7 @@ def count_params(d_model: int, n_heads: int, n_layers: int):
 
 def flops_to_params_and_tokens(flops: int, param_count):
     num_tokens = flops / (6 * param_count)
-    if num_tokens > 1_900_000_000: # too many tokens
+    if num_tokens > 1_900_000_000: # too many tokens, this is the size of our dataset
         return None
     return num_tokens
 
@@ -38,17 +38,12 @@ def run_subprocess(command, env):
                 print(f"stderr: {stderr.decode()}", file=sys.stderr)
             else:
                 print(f"Successfully executed: {' '.join(command)}")
-                # Optionally, handle stdout if needed
-                # print(stdout.decode())
         except Exception as e:
             print(f"Exception occurred while running command: {' '.join(command)}", file=sys.stderr)
             print(str(e), file=sys.stderr)
 
 flop_counts = [
-    # 1e14, 
-    # 3e14, 
-    # 6e14, 
-    1e15, # 1 PFLOP
+    1e15, # 1 PetaFLOP
     3e15, 
     6e15, 
     1e16, 
@@ -56,30 +51,9 @@ flop_counts = [
     6e16, 
     1e17, 
     3e17, 
-    6e17, 
+    6e17, # 60 PetaFLOPs
 ]
 
-
-# d_model, n_heads, n_layers
-# model_sizes = [ 
-#     # (48, 1, 1),
-#     #
-#     (64, 1, 2),
-#     #
-#     (96, 1, 4),
-#     #
-#     (128, 2, 4),
-#     #
-#     (192, 2, 4),
-#     #
-#     (256, 4, 4),
-#     # 
-#     (384, 6, 4),
-#     #
-#     (512, 8, 4),
-#     #
-#     (768, 8, 8),
-# ]
 
 model_sizes = [
     (d, max(1, d//64), max(d//64, 2)) for d in range(256, 64 * 17, 64)
@@ -125,7 +99,6 @@ for flop_count in flop_counts:
         env = os.environ.copy()
         env["CUDA_VISIBLE_DEVICES"] = str(cuda_device)
 
-        # Construct the command as a list
         command = [
             sys.executable,  # Ensures the same Python interpreter is used
             "char_scaling_laws.py",
@@ -139,7 +112,6 @@ for flop_count in flop_counts:
         ]
         print("Executing command:", " ".join(command))
         
-        # Launch the subprocess in a separate thread to avoid blocking
         threading.Thread(target=run_subprocess, args=(command, env)).start()
         
         count += 1
