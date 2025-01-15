@@ -12,34 +12,10 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.pipeline import make_pipeline
 
 
-# try training with higher LR / lower batch size:
-#flops10.0_d640_l10_h10
-#flops6.0_d640_l10_h10
-
-def parse_tensorboard_log(event_file_path, tag):
-    if not os.path.isfile(event_file_path):
-        raise FileNotFoundError(f"Event file not found: {event_file_path}")
-
-    # Initialize EventAccumulator with scalar data
-    ea = EventAccumulator(event_file_path, size_guidance={'scalars': 0})
-    ea.Reload()
-
-    # Check if the tag exists
-    if tag not in ea.Tags()['scalars']:
-        available_tags = ea.Tags()['scalars']
-        raise ValueError(f"Tag '{tag}' not found in event file. Available tags: {available_tags}")
-
-    # Retrieve scalar events for the specified tag
-    scalar_events = ea.Scalars(tag)
-
-    return scalar_events
-
 log_dirs = glob.glob("outputs/*")
-
 flops_to_curve = {}
 
 for log_dir in log_dirs:
-    # print(f"Processing {log_dir}")
     with open(os.path.join(log_dir, "args.json")) as f:
         args = json.load(f)
         seq_len = args["seq_len"]
@@ -59,12 +35,9 @@ for log_dir in log_dirs:
     params = data["Model/Total Parameters"][-1]["value"]
     num_peta_flops = float(log_dir.split("/")[1].split("_")[0][5:])
     name = log_dir.split("/")[1]
+    # outlier rejection based on loss value. Some very short runs do not converge
     if final_loss > 2:
         continue
-
-    print(f"logdir={log_dir}, final_loss={final_loss}, iters={num_iters}")
-
-
     if num_peta_flops not in flops_to_curve:
         flops_to_curve[num_peta_flops] = []
     flops_to_curve[num_peta_flops].append((params, final_loss, name))
