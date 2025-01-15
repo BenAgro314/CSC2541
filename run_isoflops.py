@@ -19,7 +19,7 @@ def flops_to_params_and_tokens(flops: int, param_count):
         return None
     return num_tokens
 
-MAX_CONCURRENT_PROCESSES = 4
+MAX_CONCURRENT_PROCESSES = 2
 semaphore = threading.Semaphore(MAX_CONCURRENT_PROCESSES)
 
 def run_subprocess(command, env):
