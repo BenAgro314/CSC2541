@@ -1,0 +1,16 @@
+{
+    "output_dir": "outputs",
+    "experiment_name": "flops1.0_d640_l10_h10_tokens3369856_params49458094",
+    "seq_len": 128,
+    "batch_size": 128,
+    "epochs": 1,
+    "lr": 0.0003,
+    "num_workers": 4,
+    "num_train_tokens": 3369856,
+    "d_model": 640,
+    "n_heads": 10,
+    "n_layers": 10,
+    "num_iters_generate": 5000,
+    "checkpoint_iters": 5000,
+    "run_val": false
+}
