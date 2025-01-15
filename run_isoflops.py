@@ -98,7 +98,7 @@ plt.savefig("params.png")
 plt.close("all")
 
 count = 0
-batch_size = 64
+batch_size = 128
 seq_len = 128
 for flop_count in flop_counts:
     print("=" * 30)
